@@ -1,0 +1,6 @@
+.DS_Store
+Pipeline/output/
+*.pyc
+__pycache__/
+node_modules/
+.env

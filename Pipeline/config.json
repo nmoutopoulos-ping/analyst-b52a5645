@@ -1,0 +1,22 @@
+{
+  "gas_url": "YOUR_APPS_SCRIPT_WEB_APP_URL",
+
+  "rentcast_api_key": "211a4a59486243839d76e1102a09c883",
+  "rentcast_base_url": "https://api.rentcast.io/v1",
+
+  "excel_template": "../Underwriting Folder/Multifamily Model Template.xlsx",
+  "output_dir": "./output",
+
+  "email": {
+    "enabled": true,
+    "sender": "YOUR_GMAIL@gmail.com",
+    "app_password": "YOUR_GMAIL_APP_PASSWORD",
+    "default_recipient": "nikomoutop10@gmail.com",
+    "subject_prefix": "Ping Underwriting Model"
+  },
+
+  "pipeline": {
+    "max_comps_per_combo": 20,
+    "distance_unit": "km"
+  }
+}
