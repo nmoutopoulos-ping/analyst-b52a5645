@@ -1,6 +1,27 @@
-.DS_Store
+# Secrets
+Pipeline/config.json
+
+# Pipeline runtime
 Pipeline/output/
-*.pyc
+Pipeline/processed.json
+Pipeline/__pycache__/
+Pipeline/*.pyc
 __pycache__/
+*.pyc
+
+# Extension artifacts
+Extension/ping-analyst_v1.zip
+
+# Docs (internal)
+docs/
+*.docx
+
+# OS / tools
+.DS_Store
 node_modules/
 .env
+
+# Lock files & duplicates
+*.~lock.*
+Extension/**/*.zip
+Extension/.claude/

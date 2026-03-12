@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Ping Analyst",
+  "version": "1.2.0",
+  "description": "Multifamily underwriting analysis powered by Ping.",
+  "permissions": ["storage", "sidePanel"],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*",
+    "https://nominatim.openstreetmap.org/*",
+    "http://localhost:5001/"
+  ],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": {
+    "default_title": "Ping Analyst",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
