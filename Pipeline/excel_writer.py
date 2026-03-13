@@ -13,7 +13,7 @@ from datetime import datetime
 
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-from helpers import shorten_address
+from helpers import shorten_address, parse_num
 
 # ── Shared styles ──────────────────────────────────────────────────────────────
 ALT_FILL  = PatternFill("solid", fgColor="F8FAFC")
@@ -168,18 +168,15 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
     address   = search_meta.get("address", "—")
     ws["C4"] = f"{search_id}  |  {address}"; ws["C4"].font = BLUE_FONT
 
-    try:
-        ws["C7"] = float(search_meta["price"]); ws["C7"].font = BLUE_FONT
-    except (ValueError, TypeError):
-        pass
-    try:
-        ws["C10"] = float(search_meta["cost"]); ws["C10"].font = BLUE_FONT
-    except (ValueError, TypeError):
-        pass
-    try:
-        ws["C12"] = int(float(search_meta["totalUnits"])); ws["C12"].font = BLUE_FONT
-    except (ValueError, TypeError):
-        pass
+    _price = parse_num(search_meta.get("price"))
+    if _price:
+        ws["C7"] = _price; ws["C7"].font = BLUE_FONT
+    _cost = parse_num(search_meta.get("cost"))
+    if _cost:
+        ws["C10"] = _cost; ws["C10"].font = BLUE_FONT
+    _total_units = parse_num(search_meta.get("totalUnits"), as_int=True)
+    if _total_units:
+        ws["C12"] = _total_units; ws["C12"].font = BLUE_FONT
 
     seen, unique = set(), []
     for c in combos:
@@ -282,16 +279,15 @@ def populate_inputs(ws, search_meta: dict, combos: list,
     """
     short = shorten_address(search_meta["address"])
     ws.cell(row=5, column=2, value=short).font = BLUE_FONT
-    try:
-        ws.cell(row=6, column=2, value=float(search_meta["price"])).font = BLUE_FONT
-    except (ValueError, TypeError):
-        pass
-    try:
-        total_units   = int(float(search_meta["totalUnits"]))
-        cost_per_unit = float(search_meta["cost"]) / total_units if total_units else 0
-        ws.cell(row=26, column=2, value=round(cost_per_unit, 0)).font = BLUE_FONT
-    except (ValueError, TypeError):
-        pass
+    _price = parse_num(search_meta.get("price"))
+    if _price:
+        ws.cell(row=6, column=2, value=_price).font = BLUE_FONT
+    _total_units = parse_num(search_meta.get("totalUnits"), as_int=True)
+    _cost = parse_num(search_meta.get("cost"))
+    if _total_units:
+        cost_per_unit = _cost / _total_units if _total_units else 0
+        if cost_per_unit:
+            ws.cell(row=26, column=2, value=round(cost_per_unit, 0)).font = BLUE_FONT
 
     comp_lookup = {(str(s["beds"]), str(s["baths"])): s for s in comp_summary}
 

@@ -10,7 +10,7 @@ from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 
-from helpers import shorten_address, unit_counts as _unit_counts
+from helpers import shorten_address, unit_counts as _unit_counts, parse_num
 
 
 def generate_summary_docx(job_dir, search_meta, comp_summary, all_comp_rows=None):
@@ -119,21 +119,24 @@ def generate_summary_docx(job_dir, search_meta, comp_summary, all_comp_rows=None
     short_name  = shorten_address(search_meta["address"])
     date_str    = datetime.now().strftime("%B %d, %Y")
 
-    try:    price       = float(search_meta.get("price") or 0)
-    except: price = 0
-    try:    cost        = float(search_meta.get("cost")  or 0)
-    except: cost = 0
-    try:    sqft        = float(search_meta.get("sqft")  or 0)
-    except: sqft = 0
-    try:    total_units = int(float(search_meta.get("totalUnits") or 0))
-    except: total_units = 0
+    price       = parse_num(search_meta.get("price"))
+    cost        = parse_num(search_meta.get("cost"))
+    sqft        = parse_num(search_meta.get("sqft"))
+    total_units = parse_num(search_meta.get("totalUnits"), as_int=True)
 
-    n_combos        = len(comp_summary)
-    unit_cnts       = _unit_counts(search_meta["totalUnits"], n_combos)
-    gross_monthly   = sum(
-        unit_cnts[i] * (s.get("avg_rent") or 0)
-        for i, s in enumerate(comp_summary)
-    )
+    # Use actual per-type unit counts when available (embedded by main.py).
+    # Fall back to even distribution across types that have comp data.
+    if any(s.get("units", 0) for s in comp_summary):
+        gross_monthly = sum(
+            (s.get("units") or 0) * (s.get("avg_rent") or 0)
+            for s in comp_summary
+        )
+    else:
+        _types_with_data = [s for s in comp_summary if s.get("avg_rent")]
+        _unit_cnts = _unit_counts(search_meta["totalUnits"], len(_types_with_data))
+        gross_monthly = sum(
+            _unit_cnts[i] * s["avg_rent"] for i, s in enumerate(_types_with_data)
+        )
     gross_annual = gross_monthly * 12
 
     # ── CoC estimates using template's fixed underwriting assumptions ──────────

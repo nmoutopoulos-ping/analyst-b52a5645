@@ -131,6 +131,34 @@ def run_pipeline() -> None:
 
             comp_summary = aggregate_rent_assumptions(all_comp_rows)
 
+            # Ensure every requested combo appears in comp_summary even when
+            # RentCast returned 0 results for that type. Also embed actual
+            # per-type unit counts so gross-revenue calcs downstream are correct.
+            _combo_map = {}
+            for c in combos:
+                try:
+                    bs = str(int(float(c["beds"])))
+                    bf = float(c["baths"])
+                    ba = str(int(bf)) if bf == int(bf) else str(bf)
+                except (ValueError, TypeError):
+                    bs, ba = str(c["beds"]), str(c["baths"])
+                try:
+                    u = int(float(c.get("units", 0) or 0))
+                except (ValueError, TypeError):
+                    u = 0
+                _combo_map[(bs, ba)] = u
+            for s in comp_summary:
+                s["units"] = _combo_map.get((s["beds"], s["baths"]), 0)
+            _existing = {(s["beds"], s["baths"]) for s in comp_summary}
+            for (bs, ba), u in _combo_map.items():
+                if (bs, ba) not in _existing:
+                    comp_summary.append({
+                        "beds": bs, "baths": ba,
+                        "count": 0, "avg_rent": 0, "avg_sqft": 0,
+                        "units": u,
+                    })
+            comp_summary.sort(key=lambda s: (float(s["beds"]), float(s["baths"])))
+
             # 3. Copy template and populate Excel model
             print(f"  [3] Populating Excel model...")
             short_name  = shorten_address(base["address"])

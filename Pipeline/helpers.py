@@ -70,6 +70,20 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 # ── Unit-mix arithmetic ────────────────────────────────────────────────────────
 
+def parse_num(val, as_int=False):
+    """Parse a possibly formatted number (commas, $ signs) to float or int.
+    Handles values like '2,400,000', '$2,400,000', 2400000, etc.
+    Returns 0 on any parse failure or empty input.
+    """
+    try:
+        s = str(val or "").replace("$", "").replace(",", "").strip()
+        if not s:
+            return 0
+        return int(float(s)) if as_int else float(s)
+    except (ValueError, TypeError):
+        return 0
+
+
 def unit_counts(total_units, n_combos: int) -> list:
     """Distribute total_units as evenly as possible across n_combos."""
     if n_combos == 0:
