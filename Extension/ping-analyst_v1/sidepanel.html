@@ -481,19 +481,30 @@
       </div>
     </div>
 
-    <!-- User Information -->
-    <div class="card">
+    <!-- Access Key -->
+    <div class="card model-card" id="keyCard">
       <div class="card-header">
         <span class="card-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          User Information
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          Access Key
+        </span>
+        <span class="model-status" id="keyStatus">
+          <span class="model-dot"></span>
+          <span id="keyStatusText">NOT SET</span>
         </span>
       </div>
       <div class="card-body">
-        <div class="field">
-          <label class="field-label" for="email">Email Address <span class="required">*</span></label>
-          <input id="email" type="email" placeholder="your.email@company.com" autocomplete="email"/>
-          <span class="field-error" id="emailError">Please enter a valid email address.</span>
+        <p class="model-desc">Enter your Ping access key to authorize analyses. Contact your admin if you need one.</p>
+        <div id="keyUnconfigured">
+          <div class="model-input-row">
+            <input id="apiKeyInput" type="text" placeholder="PING-XXXX-XXXX" autocomplete="off" style="font-family:monospace;letter-spacing:0.5px;"/>
+            <button class="btn-configure" id="saveKeyBtn">Save</button>
+          </div>
+          <span class="field-error" id="keyError" style="display:none;">Please enter a valid access key.</span>
+        </div>
+        <div class="model-configured" id="keyConfigured" style="display:none;">
+          <span class="model-url-text" id="keyDisplay"></span>
+          <button class="btn-text" id="editKeyBtn">Edit</button>
         </div>
       </div>
     </div>

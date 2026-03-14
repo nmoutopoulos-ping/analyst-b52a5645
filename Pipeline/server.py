@@ -6,7 +6,7 @@ generates a searchId, and runs the full underwriting pipeline in a
 background thread. No Google Sheets or GAS dependency.
 
 POST /trigger
-  Body: { email, address, lat, lng, price, cost, sqft,
+  Body: { api_key, address, lat, lng, price, cost, sqft,
           radius, minComps, maxComps, status, combos, commercial }
   → { ok, searchId, status }   or   { ok: false, error }
 
@@ -32,7 +32,7 @@ from flask import Flask, jsonify, make_response, request
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
-from users import ALLOWED_USERS
+from users import USERS
 
 # ── Setup ───────────────────────────────────────────────────────────────────────
 app   = Flask(__name__)
@@ -74,17 +74,22 @@ def _gen_search_id() -> str:
 def trigger():
     payload = request.get_json(force=True, silent=True) or {}
 
-    # Validate email
-    email = (payload.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"ok": False, "error": "Missing email"}), 400
+    # Validate API key
+    api_key = (payload.get("api_key") or "").strip()
+    if not api_key:
+        return jsonify({"ok": False, "error": "Missing API key"}), 400
 
-    if email not in {u.lower() for u in ALLOWED_USERS}:
-        log.warning(f"Unauthorized trigger attempt: {email}")
+    user = USERS.get(api_key)
+    if not user:
+        log.warning(f"Unauthorized trigger attempt with key: {api_key[:8]}…")
         return jsonify({
             "ok": False,
-            "error": "Not authorized. Contact your admin to request access.",
+            "error": "Invalid API key. Contact your admin to request access.",
         }), 403
+
+    # Resolve email from key — user cannot spoof this
+    email = user["email"]
+    payload["email"] = email
 
     # Validate required fields
     if not payload.get("address"):
@@ -101,7 +106,7 @@ def trigger():
 
     search_id = _gen_search_id()
     payload["searchId"] = search_id
-    log.info(f"Trigger: {search_id} | {email} | {payload.get('address', '?')}")
+    log.info(f"Trigger: {search_id} | {user['name']} <{email}> | {payload.get('address', '?')}")
 
     def _run():
         with _lock:

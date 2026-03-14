@@ -175,16 +175,48 @@ $("editUrlBtn").addEventListener("click", () => {
   chrome.storage.sync.remove("serverUrl"); $("modelUrl").value = ""; setUnconfiguredState();
 });
 
+// ── Access Key ─────────────────────────────────────────────────────────────────
+function setKeyConfigured(key) {
+  $("keyUnconfigured").style.display = "none";
+  $("keyConfigured").style.display   = "flex";
+  $("keyDisplay").textContent         = key.slice(0, 9) + "****";  // PING-XXXX-****
+  $("keyCard").classList.add("ok");
+  $("keyStatus").className = "model-status ok";
+  $("keyStatusText").textContent = "AUTHORIZED";
+}
+function setKeyUnconfigured() {
+  $("keyUnconfigured").style.display = "";
+  $("keyConfigured").style.display   = "none";
+  $("keyCard").classList.remove("ok");
+  $("keyStatus").className = "model-status";
+  $("keyStatusText").textContent = "NOT SET";
+}
+$("saveKeyBtn").addEventListener("click", () => {
+  const key = $("apiKeyInput").value.trim().toUpperCase();
+  if (!key.startsWith("PING-") || key.length < 10) {
+    $("keyError").style.display = "block"; return;
+  }
+  $("keyError").style.display = "none";
+  chrome.storage.sync.set({ apiKey: key });
+  setKeyConfigured(key);
+});
+$("editKeyBtn").addEventListener("click", () => {
+  chrome.storage.sync.remove("apiKey"); $("apiKeyInput").value = ""; setKeyUnconfigured();
+});
+
 // ── Settings ───────────────────────────────────────────────────────────────────
 function getSavedServerUrl() {
   return new Promise(r => chrome.storage.sync.get(["serverUrl"], s => r(s.serverUrl || null)));
 }
+function getSavedApiKey() {
+  return new Promise(r => chrome.storage.sync.get(["apiKey"], s => r(s.apiKey || null)));
+}
 async function loadSettings() {
   chrome.storage.sync.get(
-    ["serverUrl","email","address","price","cost","sqft","radius","minComps","maxComps","status","combos","commercial","commercialToggle"],
+    ["serverUrl","apiKey","address","price","cost","sqft","radius","minComps","maxComps","status","combos","commercial","commercialToggle"],
     cfg => {
       if (cfg.serverUrl) { $("modelUrl").value = cfg.serverUrl; setConfiguredState(cfg.serverUrl); }
-      if (cfg.email)    $("email").value    = cfg.email;
+      if (cfg.apiKey)   { $("apiKeyInput").value = cfg.apiKey; setKeyConfigured(cfg.apiKey); }
       if (cfg.address)  $("address").value  = cfg.address;
       if (cfg.price)    $("price").value    = formatUSD(cfg.price);
       if (cfg.cost)     $("cost").value     = formatUSD(cfg.cost);
@@ -209,7 +241,6 @@ async function loadSettings() {
 }
 function getFormVals() {
   return {
-    email:    $("email").value.trim(),
     address:  $("address").value.trim(),
     price:    parseUSD($("price").value),
     cost:     parseUSD($("cost").value),
@@ -236,10 +267,9 @@ function hideErr(id) { $(id).classList.remove("on"); }
     $("compsWarn").className = "warn-banner" + (mn > mx && mx ? " on" : "");
   });
 });
-function validate(vals) {
+function validate(vals, apiKey) {
   let ok = true;
-  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!vals.email || !emailRe.test(vals.email)) { showErr("emailError"); $("email").classList.add("err"); ok = false; } else { hideErr("emailError"); $("email").classList.remove("err"); }
+  if (!apiKey) { $("formError").textContent = "Please enter your access key first."; $("formError").className = "form-error on"; return false; }
   if (!vals.address) { showErr("addressError"); $("address").classList.add("err"); ok = false; } else { hideErr("addressError"); $("address").classList.remove("err"); }
   const mn = parseInt(vals.minComps), mx = parseInt(vals.maxComps);
   if (!vals.radius || !vals.minComps || !vals.maxComps) { showErr("paramsError"); ok = false; } else if (mn > mx) { showErr("paramsError"); ok = false; } else { hideErr("paramsError"); }
@@ -263,8 +293,11 @@ $("runBtn").addEventListener("click", async () => {
     $("formError").textContent = "Please configure your Ping server URL first.";
     $("formError").className = "form-error on"; return;
   }
+
+  // Check API key saved
+  const apiKey = await getSavedApiKey();
   $("formError").className = "form-error";
-  if (!validate(vals)) return;
+  if (!validate(vals, apiKey)) return;
 
   $("runBtn").disabled = true;
   $("runBtn").innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin .7s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Running…`;
@@ -274,7 +307,7 @@ $("runBtn").addEventListener("click", async () => {
 
   try {
     const body = {
-      email:      vals.email,
+      api_key:    apiKey,
       address:    resolvedAddress || vals.address,
       lat:        resolvedCoords?.lat  ?? null,
       lng:        resolvedCoords?.lng  ?? null,
@@ -299,20 +332,19 @@ $("runBtn").addEventListener("click", async () => {
     const totalUnits = selectedCombos.reduce((s, c) => s + (parseInt(c.units) || 0), 0);
     const entry = {
       searchId:   data.searchId || "—",
-      email:      vals.email,
       address:    vals.address,
       totalUnits,
       combos:     selectedCombos,
       commercial: activeCommercial,
       timestamp:  new Date().toISOString(),
       success:    !!data.ok,
-      message:    data.error || (data.ok ? "Analysis started — you'll receive an email when it's ready." : "Unknown error"),
+      message:    data.error || (data.ok ? "Analysis started — results will be emailed to you shortly." : "Unknown error"),
     };
     addToHistory(entry);
     showResults(entry, vals);
 
   } catch (err) {
-    const entry = { searchId: "ERROR", email: vals.email, address: vals.address, combos: selectedCombos, commercial: activeCommercial, timestamp: new Date().toISOString(), success: false, message: err.message };
+    const entry = { searchId: "ERROR", address: vals.address, combos: selectedCombos, commercial: activeCommercial, timestamp: new Date().toISOString(), success: false, message: err.message };
     addToHistory(entry); showResults(entry, vals);
   } finally {
     $("runBtn").disabled = false;
@@ -332,7 +364,6 @@ function showResults(entry, vals) {
 
   const details = $("resultDetails"); details.innerHTML = "";
   [
-    ["Email",         entry.email],
     ["Address",       entry.address],
     ["Total Units",   entry.totalUnits || "—"],
     ["Price",         vals?.price ? formatUSD(vals.price) : "—"],
