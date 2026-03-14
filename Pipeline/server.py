@@ -247,6 +247,26 @@ def deal_download(search_id, filename):
     return jsonify({"ok": False, "error": "File not found"}), 404
 
 
+# ── CRM Login ────────────────────────────────────────────────────────────────────
+@app.route("/crm/login", methods=["POST"])
+def crm_login():
+    """
+    Validate an email + API key pair for CRM sign-in.
+    Both must match the same record in users.json.
+    Returns the user's name on success so the CRM can personalise the UI.
+    """
+    data    = request.get_json(force=True, silent=True) or {}
+    email   = data.get("email", "").strip().lower()
+    api_key = data.get("api_key", "").strip().upper()
+    if not email or not api_key:
+        return jsonify({"ok": False, "error": "Email and access key are required"}), 400
+    user = USERS.get(api_key)
+    if not user or user["email"].lower() != email:
+        return jsonify({"ok": False, "error": "Email and access key don't match"}), 401
+    log.info(f"CRM login: {user['name']} <{email}>")
+    return jsonify({"ok": True, "name": user["name"], "email": user["email"]}), 200
+
+
 # ── Admin ────────────────────────────────────────────────────────────────────────
 def _admin_auth(f):
     """Decorator: require active admin session, else return 401."""

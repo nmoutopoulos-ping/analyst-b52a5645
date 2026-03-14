@@ -353,9 +353,100 @@
     .btn-text:hover { background: rgba(0,0,0,0.06); }
     .key-unconfigured-row { display: flex; gap: 8px; }
     .key-unconfigured-row input { flex: 1; font-family: monospace; letter-spacing: 0.5px; }
+
+    /* ── Login screen ── */
+    #loginScreen {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: var(--bg); padding: 20px;
+    }
+    .login-card {
+      background: var(--white); border: 1px solid var(--border);
+      border-radius: 14px; box-shadow: 0 8px 32px rgba(15,23,42,0.10);
+      padding: 36px 40px; width: 100%; max-width: 380px;
+    }
+    .login-brand {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 26px;
+    }
+    .login-brand-icon {
+      width: 36px; height: 36px; background: var(--navy); border-radius: 10px;
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+    }
+    .login-brand-text { line-height: 1.2; }
+    .login-brand-name { font-size: 15px; font-weight: 700; color: var(--text); }
+    .login-brand-sub  { font-size: 11px; color: var(--text-3); }
+    .login-title { font-size: 18px; font-weight: 700; color: var(--text);
+                    letter-spacing: -0.3px; margin-bottom: 6px; }
+    .login-sub   { font-size: 13px; color: var(--text-2); margin-bottom: 24px; }
+    .login-field { margin-bottom: 14px; }
+    .login-field label { display: block; font-size: 11px; font-weight: 700;
+                          text-transform: uppercase; letter-spacing: 0.7px;
+                          color: var(--text-2); margin-bottom: 5px; }
+    .login-field input { width: 100%; padding: 10px 13px; border: 1px solid var(--border);
+                          border-radius: var(--r-sm); font-size: 14px; font-family: inherit;
+                          outline: none; transition: border-color .15s, box-shadow .15s; }
+    .login-field input:focus { border-color: var(--blue);
+                                box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .login-field input.mono { font-family: monospace; letter-spacing: 0.5px; }
+    .login-error { font-size: 13px; color: var(--red); min-height: 18px; margin-bottom: 12px;
+                    font-weight: 500; display: none; }
+    .login-error.on { display: block; }
+    .btn-login { width: 100%; padding: 11px; background: var(--navy); color: #fff;
+                  border: none; border-radius: var(--r-sm); font-size: 14px; font-weight: 600;
+                  font-family: inherit; cursor: pointer; transition: background .12s; }
+    .btn-login:hover:not(:disabled) { background: var(--navy-hover); }
+    .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Nav sign out ── */
+    .btn-signout {
+      font-size: 12px; color: rgba(255,255,255,0.4); background: none;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: var(--r-sm);
+      padding: 4px 11px; cursor: pointer; font-family: inherit;
+      transition: color .12s, border-color .12s;
+    }
+    .btn-signout:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.3); }
+
+    /* ── Session info card ── */
+    .session-info {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--green-light); border: 1px solid var(--green-mid);
+      border-radius: var(--r-sm); padding: 11px 14px; gap: 12px;
+    }
+    .session-detail { display: flex; flex-direction: column; gap: 2px; }
+    .session-name  { font-size: 13px; font-weight: 600; color: var(--text); }
+    .session-email { font-size: 12px; color: var(--text-2); }
+    .session-key   { font-size: 11px; font-family: monospace; color: var(--text-3);
+                      margin-top: 2px; }
   </style>
 </head>
 <body>
+
+<!-- ══════════════ LOGIN SCREEN ══════════════ -->
+<div id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-brand-icon">🏘</div>
+      <div class="login-brand-text">
+        <div class="login-brand-name">Ping Analyst</div>
+        <div class="login-brand-sub">CRM</div>
+      </div>
+    </div>
+    <div class="login-title">Sign in</div>
+    <div class="login-sub">Enter your email and access key to continue.</div>
+    <div class="login-field">
+      <label for="loginEmail">Email</label>
+      <input id="loginEmail" type="email" placeholder="you@company.com" autocomplete="email"/>
+    </div>
+    <div class="login-field">
+      <label for="loginKey">Access Key</label>
+      <input id="loginKey" type="text" class="mono" placeholder="PING-XXXX-XXXX" autocomplete="off"/>
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="btn-login" id="loginBtn">Sign In</button>
+  </div>
+</div>
+
+<!-- ══════════════ APP SHELL ══════════════ -->
+<div id="appShell" style="display:none;">
 
 <!-- ── Top Nav ── -->
 <nav class="topnav">
@@ -383,6 +474,7 @@
   <div class="nav-right">
     <span class="nav-user" id="navUser"></span>
     <span class="nav-badge">v1.0</span>
+    <button class="btn-signout" id="signOutBtn">Sign out</button>
   </div>
 </nav>
 
@@ -585,26 +677,22 @@
     </div>
   </div>
 
-  <!-- Access Key -->
+  <!-- Session -->
   <div class="card">
     <div class="card-header">
       <span class="card-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-        Access Key
+        Session
       </span>
     </div>
     <div class="card-body">
-      <p style="font-size:13px;color:var(--text-2);">Your Ping access key authorizes analyses and is shared with the Chrome extension. Contact your admin for a key.</p>
-      <div id="keyUnconfigured">
-        <div class="key-unconfigured-row">
-          <input id="apiKeyInput" type="text" placeholder="PING-XXXX-XXXX" autocomplete="off"/>
-          <button class="btn-primary btn-sm" id="saveKeyBtn">Save</button>
+      <div class="session-info">
+        <div class="session-detail">
+          <span class="session-name" id="sessionName"></span>
+          <span class="session-email" id="sessionEmail"></span>
+          <span class="session-key" id="sessionKey"></span>
         </div>
-        <span class="field-error" id="keyError">Please enter a valid access key (format: PING-XXXX-XXXX).</span>
-      </div>
-      <div class="key-configured" id="keyConfigured" style="display:none;">
-        <span class="key-text" id="keyDisplay"></span>
-        <button class="btn-text" id="editKeyBtn">Edit</button>
+        <button class="btn-text" onclick="signOut()">Sign out</button>
       </div>
     </div>
   </div>
@@ -1108,58 +1196,118 @@ async function saveAssumptions() {
 document.getElementById("saveAssumptionsBtn").addEventListener("click", saveAssumptions);
 
 // ── Settings ────────────────────────────────────────────────────────────────────
-function setKeyConfigured(key){
-  document.getElementById("keyUnconfigured").style.display="none";
-  document.getElementById("keyConfigured").style.display="flex";
-  document.getElementById("keyDisplay").textContent=key.slice(0,9)+"****";
-}
-function setKeyUnconfigured(){
-  document.getElementById("keyUnconfigured").style.display="";
-  document.getElementById("keyConfigured").style.display="none";
-}
-document.getElementById("saveKeyBtn").addEventListener("click",()=>{
-  const key=document.getElementById("apiKeyInput").value.trim().toUpperCase();
-  if(!key.startsWith("PING-")||key.length<10){document.getElementById("keyError").classList.add("on");return;}
-  document.getElementById("keyError").classList.remove("on");
-  LS.set("apiKey",key);
-  setKeyConfigured(key);
-});
-document.getElementById("editKeyBtn").addEventListener("click",()=>{
-  LS.del("apiKey"); document.getElementById("apiKeyInput").value=""; setKeyUnconfigured();
-});
-document.getElementById("saveSettingsBtn").addEventListener("click",()=>{
-  LS.set("profile",{
-    firstName:document.getElementById("firstName").value.trim(),
-    lastName:document.getElementById("lastName").value.trim(),
-    email:document.getElementById("userEmail").value.trim(),
+document.getElementById("saveSettingsBtn").addEventListener("click", () => {
+  LS.set("profile", {
+    firstName: document.getElementById("firstName").value.trim(),
+    lastName:  document.getElementById("lastName").value.trim(),
+    email:     document.getElementById("userEmail").value.trim(),
   });
-  const saved=document.getElementById("settingsSaved");
-  saved.className="settings-saved on";
-  setTimeout(()=>saved.className="settings-saved",2000);
+  const saved = document.getElementById("settingsSaved");
+  saved.className = "settings-saved on";
+  setTimeout(() => saved.className = "settings-saved", 2000);
   updateNavUser();
 });
-function loadSettings(){
-  const p=LS.get("profile");
-  if(p){
-    if(p.firstName)document.getElementById("firstName").value=p.firstName;
-    if(p.lastName)document.getElementById("lastName").value=p.lastName;
-    if(p.email)document.getElementById("userEmail").value=p.email;
+
+function loadSettings() {
+  const p = LS.get("profile");
+  if (p) {
+    if (p.firstName) document.getElementById("firstName").value = p.firstName;
+    if (p.lastName)  document.getElementById("lastName").value  = p.lastName;
+    if (p.email)     document.getElementById("userEmail").value = p.email;
   }
-  const k=LS.get("apiKey");
-  if(k){document.getElementById("apiKeyInput").value=k;setKeyConfigured(k);}
-}
-function updateNavUser(){
-  const p=LS.get("profile");
-  if(p?.firstName){ document.getElementById("navUser").textContent=`${p.firstName}${p.lastName?" "+p.lastName:""}`.trim(); }
+  // Populate session info card
+  const key = LS.get("apiKey");
+  if (key) {
+    const masked = key.slice(0, 9) + "****";
+    document.getElementById("sessionName").textContent  = p?.firstName ? `${p.firstName} ${p.lastName||""}`.trim() : "Signed in";
+    document.getElementById("sessionEmail").textContent = p?.email || "";
+    document.getElementById("sessionKey").textContent   = masked;
+  }
 }
 
+function updateNavUser() {
+  const p = LS.get("profile");
+  if (p?.firstName) {
+    document.getElementById("navUser").textContent = `${p.firstName}${p.lastName ? " " + p.lastName : ""}`.trim();
+  }
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────────
+function showApp() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appShell").style.display   = "block";
+}
+function showLogin() {
+  document.getElementById("appShell").style.display   = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+}
+
+async function attemptLogin() {
+  const email  = document.getElementById("loginEmail").value.trim();
+  const apiKey = document.getElementById("loginKey").value.trim().toUpperCase();
+  const err    = document.getElementById("loginError");
+  const btn    = document.getElementById("loginBtn");
+  err.className = "login-error";
+  if (!email || !apiKey) { err.textContent = "Both fields are required"; err.className = "login-error on"; return; }
+
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    const res  = await fetch("/crm/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, api_key: apiKey }),
+    });
+    const data = await res.json();
+    if (!data.ok) { err.textContent = data.error; err.className = "login-error on"; return; }
+    // Store session in localStorage
+    LS.set("apiKey",  apiKey);
+    LS.set("profile", { firstName: data.name.split(" ")[0], lastName: data.name.split(" ").slice(1).join(" "), email: data.email });
+    initApp();
+    showApp();
+  } catch(e) { err.textContent = "Connection error — try again"; err.className = "login-error on"; }
+  finally { btn.disabled = false; btn.textContent = "Sign In"; }
+}
+
+function signOut() {
+  LS.del("apiKey"); LS.del("profile");
+  showLogin();
+  // Reset login form
+  document.getElementById("loginEmail").value = "";
+  document.getElementById("loginKey").value   = "";
+  document.getElementById("loginError").className = "login-error";
+}
+
+document.getElementById("loginBtn").addEventListener("click", attemptLogin);
+document.getElementById("loginKey").addEventListener("keydown", e => { if (e.key === "Enter") attemptLogin(); });
+document.getElementById("loginEmail").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("loginKey").focus(); });
+document.getElementById("signOutBtn").addEventListener("click", signOut);
+
 // ── Init ────────────────────────────────────────────────────────────────────────
-buildMatrix();
-wireUSDInputs();
-loadForm();
-loadSettings();
-loadAssumptions();
-updateNavUser();
+function initApp() {
+  buildMatrix();
+  wireUSDInputs();
+  loadForm();
+  loadSettings();
+  loadAssumptions();
+  updateNavUser();
+}
+
+// On page load: restore session or show login
+(function bootstrap() {
+  const key = LS.get("apiKey");
+  if (key) {
+    // Verify key is still valid against the server
+    fetch(`/settings?api_key=${encodeURIComponent(key)}`)
+      .then(r => {
+        if (r.ok) { initApp(); showApp(); }
+        else { LS.del("apiKey"); LS.del("profile"); showLogin(); }
+      })
+      .catch(() => { initApp(); showApp(); }); // offline / unreachable — trust cache
+  } else {
+    showLogin();
+  }
+})();
 </script>
+</div><!-- #appShell -->
 </body>
 </html>
