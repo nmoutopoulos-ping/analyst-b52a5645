@@ -34,8 +34,20 @@ from flask import Flask, jsonify, make_response, request, send_from_directory
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
-from users import USERS
 import assumptions
+
+# ── User registry (loaded from users.json) ───────────────────────────────────────
+_USERS_FILE = Path(__file__).parent / "users.json"
+
+def _load_users() -> dict:
+    """Load users.json. Returns empty dict if file is missing or malformed."""
+    try:
+        return json.loads(_USERS_FILE.read_text())
+    except Exception as e:
+        print(f"[WARN] Could not load users.json: {e}", file=sys.stderr)
+        return {}
+
+USERS: dict = _load_users()
 
 # ── Setup ───────────────────────────────────────────────────────────────────────
 app   = Flask(__name__)
