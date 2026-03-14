@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ping Analyst</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy:        #0f172a;
+      --navy-hover:  #1e293b;
+      --bg:          #f1f5f9;
+      --white:       #ffffff;
+      --border:      #e2e8f0;
+      --border-2:    #cbd5e1;
+      --text:        #0f172a;
+      --text-2:      #475569;
+      --text-3:      #94a3b8;
+      --blue:        #2563eb;
+      --blue-light:  #eff6ff;
+      --blue-mid:    #dbeafe;
+      --green:       #059669;
+      --green-light: #ecfdf5;
+      --green-mid:   #a7f3d0;
+      --amber:       #b45309;
+      --amber-light: #fffbeb;
+      --amber-mid:   #fcd34d;
+      --red:         #dc2626;
+      --red-light:   #fef2f2;
+      --r:           10px;
+      --r-sm:        7px;
+      --shadow:      0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md:   0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Top Nav ── */
+    .topnav {
+      background: var(--navy);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      gap: 32px;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 15px; font-weight: 700; color: #fff;
+      letter-spacing: -0.3px; flex-shrink: 0;
+    }
+    .nav-brand-icon {
+      width: 30px; height: 30px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .nav-brand-sub { font-size: 10px; color: rgba(255,255,255,0.35); font-weight: 400; letter-spacing: 0.5px; text-transform: uppercase; }
+    .nav-tabs { display: flex; gap: 2px; flex: 1; }
+    .nav-tab {
+      font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.5);
+      padding: 6px 14px; border-radius: 6px;
+      cursor: pointer; border: none; background: none;
+      font-family: inherit; transition: color .12s, background .12s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .nav-tab:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.07); }
+    .nav-tab.active { color: #fff; background: rgba(255,255,255,0.12); }
+    .nav-tab svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+    .nav-user {
+      font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 500;
+    }
+    .nav-badge {
+      font-size: 10px; font-weight: 600;
+      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.45);
+      padding: 2px 8px; border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* ── Views ── */
+    .view { display: none; max-width: 900px; margin: 0 auto; padding: 28px 20px 60px; }
+    .view.active { display: block; }
+
+    /* ── Page header ── */
+    .page-header { margin-bottom: 20px; }
+    .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+    .page-sub   { font-size: 13px; color: var(--text-2); margin-top: 3px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .card-header {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; color: var(--text-3);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .card-title svg { width: 12px; height: 12px; }
+    .card-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── Form fields ── */
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.7px; color: var(--text-2);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .required { color: var(--red); font-size: 11px; }
+    .field-opt { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-3); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    input, select {
+      width: 100%; padding: 9px 12px;
+      background: var(--white); border: 1px solid var(--border);
+      border-radius: var(--r-sm); color: var(--text);
+      font-size: 13px; font-family: inherit;
+      outline: none; -webkit-appearance: none; appearance: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+    input.err { border-color: var(--red); }
+    input::placeholder { color: var(--text-3); }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 11px center;
+      padding-right: 32px;
+    }
+    .field-error { font-size: 11px; color: var(--red); display: none; }
+    .field-error.on { display: block; }
+
+    /* ── Address geocode ── */
+    .address-wrap { position: relative; }
+    .address-wrap input { padding-right: 36px; }
+    .addr-spinner {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      width: 14px; height: 14px;
+      border: 2px solid var(--border); border-top-color: var(--blue);
+      border-radius: 50%; animation: spin .7s linear infinite; display: none;
+    }
+    .addr-spinner.on { display: block; }
+    @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
+    .coords-pill {
+      display: none; align-items: center; gap: 5px;
+      background: var(--green-light); border: 1px solid var(--green-mid);
+      border-radius: 20px; padding: 3px 10px;
+      font-size: 11px; color: var(--green); font-family: monospace;
+    }
+    .coords-pill.on { display: flex; }
+
+    /* ── Unit mix matrix ── */
+    .matrix-top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 16px; border-top: 1px solid var(--border);
+    }
+    .matrix-badge {
+      font-size: 10px; font-weight: 700;
+      background: var(--navy); color: #fff;
+      padding: 2px 9px; border-radius: 20px;
+    }
+    .matrix-badge.active { background: var(--blue); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      background: var(--bg); color: var(--text-3); font-weight: 700;
+      font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;
+      padding: 7px 0; text-align: center; border-bottom: 1px solid var(--border);
+    }
+    th:first-child { text-align: left; padding-left: 16px; }
+    td { padding: 0; text-align: center; border-bottom: 1px solid var(--border); }
+    td:first-child { text-align: left; padding: 0 8px 0 16px; font-weight: 500; color: var(--text); }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) { background: #fafafa; }
+    .cb-cell { cursor: pointer; transition: background .1s; }
+    .cb-cell label { display: flex; align-items: center; justify-content: center; width: 100%; padding: 10px 4px; cursor: pointer; }
+    .cb-cell:hover { background: var(--blue-light) !important; }
+    .cb-cell.sel { background: var(--blue-mid) !important; }
+    .combo-cb { width: 14px; height: 14px; cursor: pointer; accent-color: var(--blue); }
+    .combo-cb:disabled { opacity: 0.25; cursor: not-allowed; }
+    .matrix-error { display: none; padding: 6px 16px 10px; font-size: 12px; color: var(--red); }
+    .matrix-error.on { display: block; }
+    .units-panel { display: none; flex-direction: column; border-top: 1px solid var(--border); }
+    .units-panel.on { display: flex; }
+    .units-panel-header { padding: 10px 16px 7px; display: flex; align-items: center; justify-content: space-between; }
+    .units-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px; border-top: 1px solid var(--border); gap: 12px; }
+    .units-label { font-size: 13px; font-weight: 500; color: var(--text); }
+    .units-input { width: 80px; flex-shrink: 0; padding: 6px 10px; font-size: 13px; }
+    .units-total { padding: 8px 16px 11px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+    .units-total-val { font-weight: 700; color: var(--navy); }
+    .units-error { display: none; padding: 3px 16px 9px; font-size: 12px; color: var(--red); }
+    .units-error.on { display: block; }
+
+    /* ── Commercial ── */
+    .toggle-cb { display: none; }
+    .toggle-wrap { display: flex; align-items: center; gap: 0; cursor: pointer; user-select: none; }
+    .toggle-sw { width: 32px; height: 18px; position: relative; background: var(--border-2); border-radius: 20px; transition: background .15s; flex-shrink: 0; }
+    .toggle-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .toggle-cb:checked + .toggle-sw { background: var(--blue); }
+    .toggle-cb:checked + .toggle-sw::after { transform: translateX(14px); }
+    .comm-panel { display: none; flex-direction: column; border-top: 1px solid var(--border); }
+    .comm-panel.on { display: flex; }
+    .comm-col-hdrs { display: grid; grid-template-columns: 1fr 70px 70px 80px 28px; gap: 6px; padding: 7px 16px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-3); background: var(--bg); border-bottom: 1px solid var(--border); }
+    .comm-row { display: grid; grid-template-columns: 1fr 70px 70px 80px 28px; gap: 6px; padding: 8px 16px; border-top: 1px solid var(--border); align-items: center; }
+    .comm-rev { font-size: 12px; font-weight: 600; color: var(--green); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .comm-rev.empty { color: var(--text-3); font-weight: 400; }
+    .comm-add-bar { padding: 8px 16px 10px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .comm-total { font-size: 12px; color: var(--text-2); font-weight: 500; }
+    .btn-add-comm { font-size: 12px; font-weight: 600; color: var(--blue); background: var(--blue-light); border: 1px solid var(--blue-mid); border-radius: var(--r-sm); padding: 5px 12px; cursor: pointer; font-family: inherit; transition: background .1s; }
+    .btn-add-comm:hover:not(:disabled) { background: var(--blue-mid); }
+    .btn-add-comm:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-rm-comm { width: 24px; height: 24px; border-radius: 50%; background: var(--red-light); border: 1px solid #fecaca; color: var(--red); font-size: 15px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; flex-shrink: 0; padding: 0; }
+    .btn-rm-comm:hover { background: #fecaca; }
+    .comm-empty { padding: 14px; text-align: center; color: var(--text-3); font-size: 13px; }
+    .comm-error { display: none; padding: 4px 16px 10px; font-size: 12px; color: var(--red); }
+    .comm-error.on { display: block; }
+    .comm-input { padding: 6px 9px; font-size: 12px; }
+    select.comm-select { padding: 6px 24px 6px 9px; font-size: 12px; }
+
+    /* ── Warn / form error ── */
+    .warn-banner { background: var(--amber-light); border: 1px solid var(--amber-mid); border-radius: var(--r-sm); padding: 9px 13px; font-size: 13px; color: var(--amber); font-weight: 500; display: none; }
+    .warn-banner.on { display: block; }
+    .form-error { background: var(--red-light); border: 1px solid #fecaca; border-radius: var(--r-sm); padding: 10px 13px; font-size: 13px; color: var(--red); font-weight: 500; display: none; margin-top: 4px; }
+    .form-error.on { display: block; }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      padding: 11px 24px; background: var(--navy); color: #fff;
+      border: none; border-radius: var(--r);
+      font-size: 14px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: background .12s, transform .1s;
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--navy-hover); }
+    .btn-primary:active:not(:disabled) { transform: scale(0.99); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-form-row { display: flex; gap: 10px; margin-top: 4px; }
+    .btn-ghost { padding: 11px 20px; background: var(--white); color: var(--text-2); border: 1px solid var(--border); border-radius: var(--r); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; transition: border-color .12s, background .12s; }
+    .btn-ghost:hover { border-color: var(--border-2); background: var(--bg); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: var(--r-sm); }
+
+    /* ── Success banner ── */
+    .success-banner {
+      background: var(--green-light); border: 1px solid var(--green-mid);
+      border-radius: var(--r); padding: 16px 18px;
+      display: none; flex-direction: column; gap: 4px; margin-bottom: 16px;
+    }
+    .success-banner.on { display: flex; }
+    .success-banner-title { font-size: 14px; font-weight: 700; color: var(--green); }
+    .success-banner-sub { font-size: 13px; color: #065f46; }
+
+    /* ── Deals table ── */
+    .deals-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
+    .deals-search { position: relative; }
+    .deals-search input { padding-left: 34px; width: 260px; }
+    .deals-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-3); pointer-events: none; }
+    .deals-table-wrap { background: var(--white); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow); }
+    .deals-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .deals-table th { background: var(--bg); color: var(--text-3); font-weight: 700; font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .deals-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .deals-table tr:last-child td { border-bottom: none; }
+    .deals-table tr:hover td { background: var(--bg); cursor: pointer; }
+    .deal-id { font-family: monospace; font-size: 12px; font-weight: 600; color: var(--navy); }
+    .deal-addr { font-weight: 500; color: var(--text); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .deal-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+    .stage-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+    .stage-New         { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .stage-Review      { background: var(--amber-light); color: var(--amber); border: 1px solid var(--amber-mid); }
+    .stage-Offer       { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+    .stage-Contract    { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-mid); }
+    .stage-Closed      { background: var(--green-light); color: var(--green); border: 1px solid var(--green-mid); }
+    .stage-Pass        { background: #f8fafc; color: var(--text-3); border: 1px solid var(--border); }
+    .empty-deals { padding: 48px 20px; text-align: center; color: var(--text-3); }
+    .empty-deals-icon { font-size: 32px; margin-bottom: 10px; }
+    .empty-deals-title { font-size: 15px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+    .empty-deals-sub { font-size: 13px; }
+    .deals-loading { padding: 40px; text-align: center; color: var(--text-3); font-size: 13px; }
+
+    /* ── Deal detail modal ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 200; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.on { display: flex; }
+    .modal {
+      background: var(--white); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      width: 100%; max-width: 600px; max-height: 88vh; overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .modal-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-shrink: 0; }
+    .modal-title { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+    .modal-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; font-family: monospace; }
+    .modal-close { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
+    .modal-close:hover { background: var(--border); }
+    .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 18px; }
+    .modal-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-3); margin-bottom: 8px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .detail-item { background: var(--bg); border-radius: var(--r-sm); padding: 9px 11px; }
+    .detail-item-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-3); margin-bottom: 2px; }
+    .detail-item-val { font-size: 13px; font-weight: 600; color: var(--text); }
+    .comp-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .comp-row:last-child { border-bottom: none; }
+    .comp-label { font-weight: 500; }
+    .comp-stats { display: flex; gap: 16px; color: var(--text-2); font-size: 12px; }
+    .stage-select-wrap { display: flex; align-items: center; gap: 10px; }
+    .stage-select-wrap select { width: auto; }
+    .download-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-download {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: var(--r-sm);
+      font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer; border: 1px solid; text-decoration: none;
+      transition: background .1s;
+    }
+    .btn-download.excel { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+    .btn-download.excel:hover { background: #dcfce7; }
+    .btn-download.word  { background: #eff6ff; color: var(--blue); border-color: var(--blue-mid); }
+    .btn-download.word:hover  { background: var(--blue-mid); }
+    .btn-download svg { width: 13px; height: 13px; }
+
+    /* ── Settings ── */
+    .settings-save-row { display: flex; align-items: center; gap: 12px; }
+    .settings-saved { font-size: 13px; color: var(--green); font-weight: 500; display: none; }
+    .settings-saved.on { display: block; }
+    .key-configured {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--green-light); border: 1px solid var(--green-mid);
+      border-radius: var(--r-sm); padding: 9px 13px;
+    }
+    .key-text { font-family: monospace; font-size: 13px; color: var(--green); flex: 1; }
+    .btn-text { font-size: 12px; font-weight: 500; color: var(--text-2); background: none; border: none; cursor: pointer; padding: 2px 7px; border-radius: 4px; font-family: inherit; transition: background .1s; }
+    .btn-text:hover { background: rgba(0,0,0,0.06); }
+    .key-unconfigured-row { display: flex; gap: 8px; }
+    .key-unconfigured-row input { flex: 1; font-family: monospace; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top Nav ── -->
+<nav class="topnav">
+  <div class="nav-brand">
+    <div class="nav-brand-icon">🏘</div>
+    <div>
+      <div>Ping Analyst</div>
+      <div class="nav-brand-sub">CRM</div>
+    </div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-view="viewAnalysis" onclick="switchView('viewAnalysis')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      New Analysis
+    </button>
+    <button class="nav-tab" data-view="viewDeals" onclick="switchView('viewDeals')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Deals
+    </button>
+    <button class="nav-tab" data-view="viewSettings" onclick="switchView('viewSettings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+  </div>
+  <div class="nav-right">
+    <span class="nav-user" id="navUser"></span>
+    <span class="nav-badge">v1.0</span>
+  </div>
+</nav>
+
+
+<!-- ══════════════ VIEW: NEW ANALYSIS ══════════════ -->
+<div class="view active" id="viewAnalysis">
+  <div class="page-header">
+    <div class="page-title">New Analysis</div>
+    <div class="page-sub">Submit a property for underwriting. Results will be emailed when ready.</div>
+  </div>
+
+  <div class="success-banner" id="successBanner">
+    <div class="success-banner-title">✓ Analysis Started</div>
+    <div class="success-banner-sub" id="successBannerSub"></div>
+  </div>
+
+  <!-- Property Information -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Property Information
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label" for="address">Property Address <span class="required">*</span></label>
+        <div class="address-wrap">
+          <input id="address" type="text" placeholder="123 Main Street, City, State ZIP" autocomplete="off"/>
+          <div class="addr-spinner" id="addrSpinner"></div>
+        </div>
+        <div class="coords-pill" id="coordsPill">📍 <span id="coordsText"></span></div>
+        <span class="field-error" id="addressError">Please enter a property address.</span>
+      </div>
+      <div class="grid-3">
+        <div class="field">
+          <label class="field-label" for="price">Price <span class="field-opt">(optional)</span></label>
+          <input id="price" type="text" inputmode="numeric" placeholder="e.g. $1,200,000"/>
+        </div>
+        <div class="field">
+          <label class="field-label" for="cost">Improvements <span class="field-opt">(optional)</span></label>
+          <input id="cost" type="text" inputmode="numeric" placeholder="e.g. $50,000"/>
+        </div>
+        <div class="field">
+          <label class="field-label" for="sqft">Building SqFt <span class="field-opt">(optional)</span></label>
+          <input id="sqft" type="number" min="0" placeholder="e.g. 8500"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unit Mix -->
+    <div class="matrix-top">
+      <span class="field-label">Unit Mix <span class="required">*</span></span>
+      <span class="matrix-badge" id="matrixBadge">0 Selected</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>1BA</th><th>2BA</th><th>3BA</th><th>4BA</th><th>5BA</th>
+        </tr>
+      </thead>
+      <tbody id="comboBody"></tbody>
+    </table>
+    <div class="matrix-error" id="comboError">Select at least one unit mix combination.</div>
+
+    <div class="units-panel" id="unitsPanel">
+      <div class="units-panel-header">
+        <span class="field-label">Units per Type <span class="required">*</span></span>
+        <span class="units-total-val" id="unitsTotalDisplay">0 Total</span>
+      </div>
+      <div id="unitsRows"></div>
+      <div class="units-error" id="unitsError">Enter the number of units for each type.</div>
+    </div>
+  </div>
+
+  <!-- Commercial Spaces -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        Commercial Spaces
+      </span>
+      <label class="toggle-wrap">
+        <input type="checkbox" class="toggle-cb" id="commercialToggle"/>
+        <span class="toggle-sw"></span>
+      </label>
+    </div>
+    <div class="comm-panel" id="commercialPanel">
+      <div class="comm-col-hdrs"><span>Space Type</span><span>Sq Ft</span><span>$/SF/Yr</span><span>Ann. Rev</span><span></span></div>
+      <div id="commercialRows"><div class="comm-empty">No spaces added yet.</div></div>
+      <div class="comm-add-bar">
+        <span class="comm-total" id="commTotalDisplay"></span>
+        <button class="btn-add-comm" id="addCommercialBtn" type="button">+ Add Space</button>
+      </div>
+      <div class="comm-error" id="commercialError">Each space needs a type, square footage, and rent rate.</div>
+    </div>
+  </div>
+
+  <!-- Search Parameters -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Search Parameters
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="grid-3">
+        <div class="field">
+          <label class="field-label" for="radius">Radius (Mi) <span class="required">*</span></label>
+          <input id="radius" type="number" step="0.1" min="0.1" placeholder="1"/>
+        </div>
+        <div class="field">
+          <label class="field-label" for="minComps">Min Comps <span class="required">*</span></label>
+          <input id="minComps" type="number" min="1" max="50" placeholder="10"/>
+        </div>
+        <div class="field">
+          <label class="field-label" for="maxComps">Max Comps <span class="required">*</span></label>
+          <input id="maxComps" type="number" min="1" max="50" placeholder="20"/>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="statusFilter">Property Status</label>
+        <select id="statusFilter">
+          <option value="Active">Active</option>
+          <option value="Pending">Pending</option>
+          <option value="Sold">Sold</option>
+          <option value="Off Market">Off Market</option>
+        </select>
+      </div>
+      <div class="warn-banner" id="compsWarn">Min Comps cannot exceed Max Comps.</div>
+      <span class="field-error" id="paramsError">Please fill in Radius, Min Comps, and Max Comps.</span>
+    </div>
+  </div>
+
+  <div class="form-error" id="formError"></div>
+
+  <div class="btn-form-row">
+    <button class="btn-primary" id="runBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Run Analysis
+    </button>
+    <button class="btn-ghost" id="saveFormBtn">Save Form</button>
+  </div>
+</div>
+
+
+<!-- ══════════════ VIEW: DEALS ══════════════ -->
+<div class="view" id="viewDeals">
+  <div class="page-header">
+    <div class="page-title">Deals</div>
+    <div class="page-sub">All submitted analyses across your account.</div>
+  </div>
+
+  <div class="deals-toolbar">
+    <div class="deals-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" id="dealsSearch" placeholder="Search by address or ID…" oninput="filterDeals()"/>
+    </div>
+    <button class="btn-ghost btn-sm" onclick="loadDeals()">↻ Refresh</button>
+  </div>
+
+  <div class="deals-table-wrap" id="dealsTableWrap">
+    <div class="deals-loading">Loading deals…</div>
+  </div>
+</div>
+
+
+<!-- ══════════════ VIEW: SETTINGS ══════════════ -->
+<div class="view" id="viewSettings">
+  <div class="page-header">
+    <div class="page-title">Settings</div>
+    <div class="page-sub">Your profile and access configuration.</div>
+  </div>
+
+  <!-- Profile -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="field">
+          <label class="field-label" for="firstName">First Name</label>
+          <input id="firstName" type="text" placeholder="Jane"/>
+        </div>
+        <div class="field">
+          <label class="field-label" for="lastName">Last Name</label>
+          <input id="lastName" type="text" placeholder="Doe"/>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="userEmail">Email Address</label>
+        <input id="userEmail" type="email" placeholder="jane@company.com"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Access Key -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        Access Key
+      </span>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--text-2);">Your Ping access key authorizes analyses and is shared with the Chrome extension. Contact your admin for a key.</p>
+      <div id="keyUnconfigured">
+        <div class="key-unconfigured-row">
+          <input id="apiKeyInput" type="text" placeholder="PING-XXXX-XXXX" autocomplete="off"/>
+          <button class="btn-primary btn-sm" id="saveKeyBtn">Save</button>
+        </div>
+        <span class="field-error" id="keyError">Please enter a valid access key (format: PING-XXXX-XXXX).</span>
+      </div>
+      <div class="key-configured" id="keyConfigured" style="display:none;">
+        <span class="key-text" id="keyDisplay"></span>
+        <button class="btn-text" id="editKeyBtn">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-save-row">
+    <button class="btn-primary" id="saveSettingsBtn">Save Settings</button>
+    <span class="settings-saved" id="settingsSaved">✓ Saved</span>
+  </div>
+</div>
+
+
+<!-- ══════════════ DEAL DETAIL MODAL ══════════════ -->
+<div class="modal-overlay" id="dealModal" onclick="if(event.target===this)closeDealModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalTitle">Deal Detail</div>
+        <div class="modal-sub" id="modalSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeDealModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+
+<script>
+// ── Storage helpers ─────────────────────────────────────────────────────────────
+const LS = {
+  get: (k, def=null) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : def; } catch { return def; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del: (k)    => { try { localStorage.removeItem(k); } catch {} },
+};
+
+// ── View switching ──────────────────────────────────────────────────────────────
+function switchView(id) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  document.querySelector(`[data-view="${id}"]`).classList.add("active");
+  if (id === "viewDeals") loadDeals();
+}
+
+// ── USD formatting ──────────────────────────────────────────────────────────────
+function parseUSD(v) { return String(v).replace(/[^0-9.]/g, ""); }
+function formatUSD(v) { const n = parseFloat(parseUSD(v)); return (isNaN(n)||v==="") ? "" : "$"+n.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function wireUSDInputs() {
+  ["price","cost"].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener("focus", () => { el.value = parseUSD(el.value); });
+    el.addEventListener("blur",  () => { el.value = formatUSD(el.value); });
+  });
+}
+
+// ── Unit Mix Matrix ─────────────────────────────────────────────────────────────
+const TYPES = {0:"Studio",1:"Single",2:"Duplex",3:"Triplex",4:"Fourplex",5:"Fiveplex"};
+const MAX_COMBOS = 5;
+let selectedCombos = [];
+
+function buildMatrix() {
+  const tbody = document.getElementById("comboBody"); tbody.innerHTML = "";
+  for (let beds=0; beds<=5; beds++) {
+    const tr = document.createElement("tr");
+    const tdL = document.createElement("td"); tdL.textContent = `${TYPES[beds]} (${beds}bd)`; tr.appendChild(tdL);
+    for (let baths=1; baths<=5; baths++) {
+      const td = document.createElement("td"); td.className = "cb-cell";
+      const cb = document.createElement("input"); cb.type="checkbox"; cb.className="combo-cb"; cb.id=`cb_${beds}_${baths}`; cb.dataset.beds=beds; cb.dataset.baths=baths; cb.dataset.type=TYPES[beds];
+      const lbl = document.createElement("label"); lbl.htmlFor=cb.id; lbl.appendChild(cb); td.appendChild(lbl);
+      td.addEventListener("click", e => { if(e.target!==cb) cb.click(); });
+      cb.addEventListener("change", () => onComboChange(cb, td));
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+}
+function onComboChange(cb, td) {
+  const beds=parseInt(cb.dataset.beds), baths=parseInt(cb.dataset.baths), type=cb.dataset.type;
+  if (cb.checked) {
+    if (selectedCombos.length >= MAX_COMBOS) { cb.checked=false; return; }
+    selectedCombos.push({beds,baths,type,units:""}); td.classList.add("sel");
+  } else {
+    selectedCombos = selectedCombos.filter(c=>!(c.beds===beds&&c.baths===baths)); td.classList.remove("sel");
+  }
+  updateMatrixBadge(); updateUnitsPanel();
+  document.querySelectorAll(".combo-cb").forEach(c => { if(!c.checked) c.disabled=selectedCombos.length>=MAX_COMBOS; });
+  if (selectedCombos.length>0) hideErr("comboError");
+}
+function updateUnitsPanel() {
+  const panel=document.getElementById("unitsPanel"), rowsDiv=document.getElementById("unitsRows");
+  if (!selectedCombos.length) { panel.classList.remove("on"); return; }
+  panel.classList.add("on"); rowsDiv.innerHTML="";
+  selectedCombos.forEach((combo,i) => {
+    const row=document.createElement("div"); row.className="units-row";
+    const inp=document.createElement("input"); inp.type="number"; inp.min="1"; inp.className="units-input"; inp.placeholder="# units"; if(combo.units) inp.value=combo.units;
+    inp.addEventListener("input", () => { selectedCombos[i].units=inp.value; updateUnitsTotal(); if(inp.value&&parseInt(inp.value)>=1) { if(selectedCombos.every(c=>c.units&&parseInt(c.units)>=1)) hideErr("unitsError"); } });
+    const lbl=document.createElement("span"); lbl.className="units-label"; lbl.textContent=`${combo.type} ${combo.beds}bd/${combo.baths}ba`;
+    row.append(lbl,inp); rowsDiv.appendChild(row);
+  });
+  updateUnitsTotal();
+}
+function updateUnitsTotal() { document.getElementById("unitsTotalDisplay").textContent=`${selectedCombos.reduce((s,c)=>s+(parseInt(c.units)||0),0)} Total`; }
+function updateMatrixBadge() {
+  const b=document.getElementById("matrixBadge"); b.textContent=`${selectedCombos.length} Selected`;
+  b.className="matrix-badge"+(selectedCombos.length>0?" active":"");
+}
+
+// ── Commercial ──────────────────────────────────────────────────────────────────
+const COMM_TYPES = ["Retail","Office","Restaurant","Medical / Dental","Flex Space"];
+const MAX_COMM = 5;
+let selectedCommercial = [];
+document.getElementById("commercialToggle").addEventListener("change", function() {
+  const p=document.getElementById("commercialPanel");
+  if(this.checked){p.classList.add("on"); if(!selectedCommercial.length)addCommRow(); else renderCommPanel();}
+  else p.classList.remove("on");
+});
+document.getElementById("addCommercialBtn").addEventListener("click", ()=>addCommRow());
+function addCommRow() { if(selectedCommercial.length>=MAX_COMM)return; selectedCommercial.push({type:COMM_TYPES[0],sqft:"",rentPerSF:""}); renderCommPanel(); }
+function removeCommRow(i) { selectedCommercial.splice(i,1); renderCommPanel(); }
+function renderCommPanel() {
+  const d=document.getElementById("commercialRows"); d.innerHTML="";
+  if(!selectedCommercial.length){d.innerHTML='<div class="comm-empty">No spaces added yet.</div>';}
+  else selectedCommercial.forEach((s,i)=>{
+    const row=document.createElement("div"); row.className="comm-row";
+    const tEl=document.createElement("select"); tEl.className="comm-select";
+    COMM_TYPES.forEach(t=>{const o=document.createElement("option");o.value=t;o.textContent=t;if(t===s.type)o.selected=true;tEl.appendChild(o);});
+    tEl.addEventListener("change",()=>{selectedCommercial[i].type=tEl.value;});
+    const sfEl=document.createElement("input");sfEl.type="number";sfEl.min="1";sfEl.className="comm-input";sfEl.placeholder="SF";if(s.sqft)sfEl.value=s.sqft;
+    const rEl=document.createElement("input");rEl.type="number";rEl.min="0";rEl.step="0.01";rEl.className="comm-input";rEl.placeholder="$/SF";if(s.rentPerSF)rEl.value=s.rentPerSF;
+    const revEl=document.createElement("span");revEl.className="comm-rev";
+    const upd=()=>{const sf=parseFloat(sfEl.value)||0,r=parseFloat(rEl.value)||0;if(sf>0&&r>0){revEl.textContent=`$${Math.round(sf*r).toLocaleString()}`;revEl.classList.remove("empty");}else{revEl.textContent="—";revEl.classList.add("empty");}};
+    upd();
+    sfEl.addEventListener("input",()=>{selectedCommercial[i].sqft=sfEl.value;upd();updateCommTotal();if(sfEl.value&&parseInt(sfEl.value)>=1)hideErr("commercialError");});
+    rEl.addEventListener("input",()=>{selectedCommercial[i].rentPerSF=rEl.value;upd();updateCommTotal();if(rEl.value&&parseFloat(rEl.value)>0)hideErr("commercialError");});
+    const rm=document.createElement("button");rm.className="btn-rm-comm";rm.type="button";rm.textContent="×";rm.addEventListener("click",()=>removeCommRow(i));
+    row.append(tEl,sfEl,rEl,revEl,rm);d.appendChild(row);
+  });
+  document.getElementById("addCommercialBtn").disabled=selectedCommercial.length>=MAX_COMM;
+  updateCommTotal();
+}
+function updateCommTotal() {
+  const sf=selectedCommercial.reduce((s,c)=>s+(parseFloat(c.sqft)||0),0);
+  const rev=selectedCommercial.reduce((s,c)=>s+(parseFloat(c.sqft)||0)*(parseFloat(c.rentPerSF)||0),0);
+  if(sf>0&&rev>0) document.getElementById("commTotalDisplay").textContent=`${Math.round(sf).toLocaleString()} SF · $${Math.round(rev).toLocaleString()}/yr`;
+  else if(sf>0) document.getElementById("commTotalDisplay").textContent=`${Math.round(sf).toLocaleString()} SF total`;
+  else document.getElementById("commTotalDisplay").textContent="";
+}
+
+// ── Geocoding ───────────────────────────────────────────────────────────────────
+let resolvedCoords=null, resolvedAddress=null, geoTimer=null;
+document.getElementById("address").addEventListener("input", ()=>{
+  resolvedCoords=null; resolvedAddress=null;
+  document.getElementById("coordsPill").className="coords-pill";
+  clearTimeout(geoTimer);
+  const v=document.getElementById("address").value.trim();
+  if(v.length<6)return;
+  geoTimer=setTimeout(()=>geocodeAddress(v),900);
+});
+async function geocodeAddress(addr) {
+  document.getElementById("addrSpinner").className="addr-spinner on";
+  try {
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addr)}`,{headers:{"Accept-Language":"en-US,en","User-Agent":"PingAnalystCRM/1.0"}});
+    const data=await res.json();
+    if(data.length>0){
+      resolvedCoords={lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
+      resolvedAddress=data[0].display_name;
+      document.getElementById("coordsText").textContent=`${resolvedCoords.lat.toFixed(5)}, ${resolvedCoords.lng.toFixed(5)}`;
+      document.getElementById("coordsPill").className="coords-pill on";
+    }
+  } catch(_){}
+  finally{document.getElementById("addrSpinner").className="addr-spinner";}
+}
+
+// ── Validation ──────────────────────────────────────────────────────────────────
+function showErr(id){document.getElementById(id).classList.add("on");}
+function hideErr(id){document.getElementById(id).classList.remove("on");}
+["minComps","maxComps"].forEach(id=>{
+  document.getElementById(id).addEventListener("input",()=>{
+    const mn=parseInt(document.getElementById("minComps").value),mx=parseInt(document.getElementById("maxComps").value);
+    document.getElementById("compsWarn").className="warn-banner"+(mn>mx&&mx?" on":"");
+  });
+});
+function validate() {
+  let ok=true;
+  const addr=document.getElementById("address").value.trim();
+  if(!addr){showErr("addressError");document.getElementById("address").classList.add("err");ok=false;}else{hideErr("addressError");document.getElementById("address").classList.remove("err");}
+  const mn=parseInt(document.getElementById("minComps").value),mx=parseInt(document.getElementById("maxComps").value),rad=document.getElementById("radius").value.trim();
+  if(!rad||!document.getElementById("minComps").value||!document.getElementById("maxComps").value){showErr("paramsError");ok=false;}else if(mn>mx){showErr("paramsError");ok=false;}else hideErr("paramsError");
+  if(!selectedCombos.length){showErr("comboError");ok=false;}else hideErr("comboError");
+  if(selectedCombos.length&&selectedCombos.some(c=>!c.units||parseInt(c.units)<1)){showErr("unitsError");ok=false;}else hideErr("unitsError");
+  if(document.getElementById("commercialToggle").checked&&selectedCommercial.length){
+    if(selectedCommercial.some(c=>!c.sqft||parseInt(c.sqft)<1||!c.rentPerSF||parseFloat(c.rentPerSF)<=0)){showErr("commercialError");ok=false;}else hideErr("commercialError");
+  }else hideErr("commercialError");
+  return ok;
+}
+
+// ── Run Analysis ────────────────────────────────────────────────────────────────
+document.getElementById("runBtn").addEventListener("click", async ()=>{
+  const apiKey=LS.get("apiKey");
+  if(!apiKey){
+    document.getElementById("formError").textContent="Please save your access key in Settings first.";
+    document.getElementById("formError").className="form-error on"; return;
+  }
+  document.getElementById("formError").className="form-error";
+  if(!validate())return;
+
+  document.getElementById("runBtn").disabled=true;
+  document.getElementById("runBtn").innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin .7s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Running…`;
+  document.getElementById("successBanner").className="success-banner";
+
+  const activeComm=document.getElementById("commercialToggle").checked?selectedCommercial:[];
+  const body={
+    api_key:    apiKey,
+    address:    resolvedAddress||document.getElementById("address").value.trim(),
+    lat:        resolvedCoords?.lat??null,
+    lng:        resolvedCoords?.lng??null,
+    price:      parseUSD(document.getElementById("price").value),
+    cost:       parseUSD(document.getElementById("cost").value),
+    sqft:       document.getElementById("sqft").value.trim(),
+    radius:     document.getElementById("radius").value.trim(),
+    minComps:   document.getElementById("minComps").value.trim(),
+    maxComps:   document.getElementById("maxComps").value.trim(),
+    status:     document.getElementById("statusFilter").value,
+    combos:     selectedCombos,
+    commercial: activeComm,
+  };
+
+  try {
+    const res=await fetch("/trigger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data=await res.json();
+    if(data.ok){
+      document.getElementById("successBannerSub").textContent=`${data.searchId} — Results will be emailed to you shortly.`;
+      document.getElementById("successBanner").className="success-banner on";
+      saveForm();
+    } else {
+      document.getElementById("formError").textContent=data.error||"Unknown error.";
+      document.getElementById("formError").className="form-error on";
+    }
+  } catch(err){
+    document.getElementById("formError").textContent="Could not connect to server: "+err.message;
+    document.getElementById("formError").className="form-error on";
+  } finally {
+    document.getElementById("runBtn").disabled=false;
+    document.getElementById("runBtn").innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Analysis`;
+  }
+});
+
+// ── Save/Load Form ──────────────────────────────────────────────────────────────
+function saveForm() {
+  LS.set("form",{
+    address:document.getElementById("address").value,
+    price:document.getElementById("price").value,
+    cost:document.getElementById("cost").value,
+    sqft:document.getElementById("sqft").value,
+    radius:document.getElementById("radius").value,
+    minComps:document.getElementById("minComps").value,
+    maxComps:document.getElementById("maxComps").value,
+    status:document.getElementById("statusFilter").value,
+    combos:selectedCombos,
+    commercial:selectedCommercial,
+    commercialOn:document.getElementById("commercialToggle").checked,
+  });
+}
+document.getElementById("saveFormBtn").addEventListener("click",()=>{
+  saveForm();
+  document.getElementById("saveFormBtn").textContent="Saved ✓";
+  setTimeout(()=>document.getElementById("saveFormBtn").textContent="Save Form",1500);
+});
+function loadForm() {
+  const f=LS.get("form"); if(!f)return;
+  if(f.address)document.getElementById("address").value=f.address;
+  if(f.price)document.getElementById("price").value=formatUSD(f.price);
+  if(f.cost)document.getElementById("cost").value=formatUSD(f.cost);
+  if(f.sqft)document.getElementById("sqft").value=f.sqft;
+  if(f.radius)document.getElementById("radius").value=f.radius;
+  if(f.minComps)document.getElementById("minComps").value=f.minComps;
+  if(f.maxComps)document.getElementById("maxComps").value=f.maxComps;
+  if(f.status)document.getElementById("statusFilter").value=f.status;
+  if(f.combos?.length){
+    selectedCombos=f.combos;
+    f.combos.forEach(({beds,baths})=>{ const cb=document.getElementById(`cb_${beds}_${baths}`); if(!cb)return; cb.checked=true; cb.closest(".cb-cell")?.classList.add("sel"); });
+    updateMatrixBadge(); updateUnitsPanel();
+    document.querySelectorAll(".combo-cb").forEach(c=>{if(!c.checked)c.disabled=selectedCombos.length>=MAX_COMBOS;});
+  }
+  if(f.commercial?.length)selectedCommercial=f.commercial;
+  if(f.commercialOn){document.getElementById("commercialToggle").checked=true;document.getElementById("commercialPanel").classList.add("on");renderCommPanel();}
+}
+
+// ── Deals ───────────────────────────────────────────────────────────────────────
+let allDeals=[];
+async function loadDeals() {
+  const wrap=document.getElementById("dealsTableWrap");
+  wrap.innerHTML='<div class="deals-loading">Loading deals…</div>';
+  const apiKey=LS.get("apiKey");
+  if(!apiKey){wrap.innerHTML='<div class="empty-deals"><div class="empty-deals-icon">🔑</div><div class="empty-deals-title">Access key required</div><div class="empty-deals-sub">Save your access key in Settings to view deals.</div></div>';return;}
+  try {
+    const res=await fetch(`/deals?api_key=${encodeURIComponent(apiKey)}`);
+    const data=await res.json();
+    if(!data.ok)throw new Error(data.error);
+    allDeals=data.deals||[];
+    renderDealsTable(allDeals);
+  } catch(err){
+    wrap.innerHTML=`<div class="empty-deals"><div class="empty-deals-icon">⚠️</div><div class="empty-deals-title">Could not load deals</div><div class="empty-deals-sub">${err.message}</div></div>`;
+  }
+}
+function filterDeals(){
+  const q=document.getElementById("dealsSearch").value.toLowerCase();
+  renderDealsTable(allDeals.filter(d=>(d.address||"").toLowerCase().includes(q)||(d.searchId||"").toLowerCase().includes(q)));
+}
+const STAGE_ORDER=["New","Review","Offer","Contract","Closed","Pass"];
+function renderDealsTable(deals){
+  const wrap=document.getElementById("dealsTableWrap");
+  if(!deals.length){wrap.innerHTML='<div class="empty-deals"><div class="empty-deals-icon">📋</div><div class="empty-deals-title">No deals yet</div><div class="empty-deals-sub">Submitted analyses will appear here once the pipeline completes.</div></div>';return;}
+  const rows=deals.map(d=>{
+    const dt=new Date(d.timestamp);
+    const date=dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+    const stage=d.dealStage||"New";
+    const units=d.totalUnits||"—";
+    const price=d.price?`$${Number(d.price).toLocaleString()}`:"—";
+    return `<tr onclick="openDeal('${d.searchId}')">
+      <td><span class="deal-id">${d.searchId}</span></td>
+      <td><div class="deal-addr">${d.shortAddress||d.address||"—"}</div><div class="deal-meta">${date}</div></td>
+      <td>${units} units</td>
+      <td>${price}</td>
+      <td><span class="stage-badge stage-${stage}">${stage}</span></td>
+    </tr>`;
+  }).join("");
+  wrap.innerHTML=`<table class="deals-table"><thead><tr><th>Search ID</th><th>Property</th><th>Units</th><th>Price</th><th>Stage</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function openDeal(searchId){
+  const deal=allDeals.find(d=>d.searchId===searchId); if(!deal)return;
+  const apiKey=LS.get("apiKey")||"";
+  document.getElementById("modalTitle").textContent=deal.shortAddress||deal.address||searchId;
+  document.getElementById("modalSub").textContent=searchId;
+
+  const price=deal.price?`$${Number(deal.price).toLocaleString()}`:"—";
+  const cost=deal.cost?`$${Number(deal.cost).toLocaleString()}`:"—";
+  const sqft=deal.sqft?`${Number(deal.sqft).toLocaleString()} sqft`:"—";
+  const dt=new Date(deal.timestamp).toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+
+  const compRows=(deal.compSummary||[]).map(c=>`
+    <div class="comp-row">
+      <span class="comp-label">${c.beds}BD/${c.baths}BA · ${c.units||"—"} units</span>
+      <div class="comp-stats">
+        <span>${c.count} comps</span>
+        <span>$${(c.avg_rent||0).toLocaleString()}/mo avg</span>
+        ${c.avg_sqft?`<span>${Math.round(c.avg_sqft).toLocaleString()} sqft</span>`:""}
+      </div>
+    </div>`).join("");
+
+  const stageOpts=STAGE_ORDER.map(s=>`<option value="${s}"${s===(deal.dealStage||"New")?" selected":""}>${s}</option>`).join("");
+
+  const excelBtn=deal.files?.excel?`<a class="btn-download excel" href="/deals/${searchId}/download/${deal.files.excel}?api_key=${encodeURIComponent(apiKey)}" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Excel Model</a>`:"";
+  const docxBtn=deal.files?.docx?`<a class="btn-download word" href="/deals/${searchId}/download/${deal.files.docx}?api_key=${encodeURIComponent(apiKey)}" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Word Summary</a>`:"";
+
+  document.getElementById("modalBody").innerHTML=`
+    <div>
+      <div class="modal-section-title">Property Details</div>
+      <div class="detail-grid">
+        <div class="detail-item"><div class="detail-item-label">Date</div><div class="detail-item-val">${dt}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Total Units</div><div class="detail-item-val">${deal.totalUnits||"—"}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Price</div><div class="detail-item-val">${price}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Improvements</div><div class="detail-item-val">${cost}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Building SqFt</div><div class="detail-item-val">${sqft}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Submitted By</div><div class="detail-item-val">${deal.email||"—"}</div></div>
+      </div>
+    </div>
+    ${compRows?`<div><div class="modal-section-title">Comp Summary</div>${compRows}</div>`:""}
+    <div>
+      <div class="modal-section-title">Deal Stage</div>
+      <div class="stage-select-wrap">
+        <select id="modalStageSelect" onchange="updateDealStage('${searchId}',this.value)">${stageOpts}</select>
+        <span style="font-size:12px;color:var(--text-3);">Changes save automatically</span>
+      </div>
+    </div>
+    ${(excelBtn||docxBtn)?`<div><div class="modal-section-title">Downloads</div><div class="download-btns">${excelBtn}${docxBtn}</div></div>`:""}
+  `;
+  document.getElementById("dealModal").classList.add("on");
+}
+function closeDealModal(){ document.getElementById("dealModal").classList.remove("on"); }
+function updateDealStage(searchId, stage){
+  const deal=allDeals.find(d=>d.searchId===searchId); if(!deal)return;
+  deal.dealStage=stage;
+  // Update badge in table immediately
+  renderDealsTable(allDeals);
+  // Note: in MVP, stage is stored client-side only. Server-side persistence comes in a future update.
+}
+
+// ── Settings ────────────────────────────────────────────────────────────────────
+function setKeyConfigured(key){
+  document.getElementById("keyUnconfigured").style.display="none";
+  document.getElementById("keyConfigured").style.display="flex";
+  document.getElementById("keyDisplay").textContent=key.slice(0,9)+"****";
+}
+function setKeyUnconfigured(){
+  document.getElementById("keyUnconfigured").style.display="";
+  document.getElementById("keyConfigured").style.display="none";
+}
+document.getElementById("saveKeyBtn").addEventListener("click",()=>{
+  const key=document.getElementById("apiKeyInput").value.trim().toUpperCase();
+  if(!key.startsWith("PING-")||key.length<10){document.getElementById("keyError").classList.add("on");return;}
+  document.getElementById("keyError").classList.remove("on");
+  LS.set("apiKey",key);
+  setKeyConfigured(key);
+});
+document.getElementById("editKeyBtn").addEventListener("click",()=>{
+  LS.del("apiKey"); document.getElementById("apiKeyInput").value=""; setKeyUnconfigured();
+});
+document.getElementById("saveSettingsBtn").addEventListener("click",()=>{
+  LS.set("profile",{
+    firstName:document.getElementById("firstName").value.trim(),
+    lastName:document.getElementById("lastName").value.trim(),
+    email:document.getElementById("userEmail").value.trim(),
+  });
+  const saved=document.getElementById("settingsSaved");
+  saved.className="settings-saved on";
+  setTimeout(()=>saved.className="settings-saved",2000);
+  updateNavUser();
+});
+function loadSettings(){
+  const p=LS.get("profile");
+  if(p){
+    if(p.firstName)document.getElementById("firstName").value=p.firstName;
+    if(p.lastName)document.getElementById("lastName").value=p.lastName;
+    if(p.email)document.getElementById("userEmail").value=p.email;
+  }
+  const k=LS.get("apiKey");
+  if(k){document.getElementById("apiKeyInput").value=k;setKeyConfigured(k);}
+}
+function updateNavUser(){
+  const p=LS.get("profile");
+  if(p?.firstName){ document.getElementById("navUser").textContent=`${p.firstName}${p.lastName?" "+p.lastName:""}`.trim(); }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────────
+buildMatrix();
+wireUSDInputs();
+loadForm();
+loadSettings();
+updateNavUser();
+</script>
+</body>
+</html>
