@@ -37,21 +37,24 @@ from flask import Flask, jsonify, make_response, redirect, request, session
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
 import assumptions
+from supabase_client import fetch_users_dict, insert_user, delete_user
 
-# ── User registry (loaded from users.json) ───────────────────────────────────────
-_USERS_FILE = Path(__file__).parent / "users.json"
+# ── User registry (loaded from Supabase at startup) ───────────────────────────
+# In-memory dict for fast per-request auth lookups.
+# All writes go to Supabase so changes survive redeploys.
 
 def _load_users() -> dict:
-    """Load users.json. Returns empty dict if file is missing or malformed."""
+    """Load users from Supabase. Falls back to users.json for local dev without Supabase."""
     try:
-        return json.loads(_USERS_FILE.read_text())
+        return fetch_users_dict()
     except Exception as e:
-        print(f"[WARN] Could not load users.json: {e}", file=sys.stderr)
-        return {}
-
-def _save_users(users: dict) -> None:
-    """Persist the in-memory USERS dict back to users.json."""
-    _USERS_FILE.write_text(json.dumps(users, indent=2) + "\n")
+        print(f"[WARN] Could not load users from Supabase: {e} — falling back to users.json", file=sys.stderr)
+        try:
+            import json as _json
+            _f = Path(__file__).parent / "users.json"
+            return _json.loads(_f.read_text()) if _f.exists() else {}
+        except Exception:
+            return {}
 
 def _gen_api_key() -> str:
     chars = string.ascii_uppercase + string.digits
@@ -340,8 +343,12 @@ def admin_add_user():
         if u["email"].lower() == email.lower():
             return jsonify({"ok": False, "error": f"Email already registered (key: {k})"}), 409
     key = _gen_api_key()
+    try:
+        insert_user(key, email, name)
+    except Exception as e:
+        log.error(f"Failed to insert user into Supabase: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": "Failed to save user"}), 500
     USERS[key] = {"email": email, "name": name}
-    _save_users(USERS)
     log.info(f"Admin: added user {name} <{email}> → {key}")
     return jsonify({"ok": True, "key": key, "user": USERS[key]}), 201
 
@@ -351,20 +358,15 @@ def admin_add_user():
 def admin_remove_user(key):
     if key not in USERS:
         return jsonify({"ok": False, "error": "Key not found"}), 404
-    user = USERS.pop(key)
-    _save_users(USERS)
+    user = USERS[key]
+    try:
+        delete_user(key)
+    except Exception as e:
+        log.error(f"Failed to delete user from Supabase: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": "Failed to delete user"}), 500
+    USERS.pop(key)
     log.info(f"Admin: removed user {user['name']} <{user['email']}> key={key}")
     return jsonify({"ok": True, "removed": user}), 200
-
-
-@app.route("/admin/users/export", methods=["GET"])
-@_admin_auth
-def admin_export_users():
-    """Return users.json content for download / commit to GitHub."""
-    return json.dumps(USERS, indent=2) + "\n", 200, {
-        "Content-Type": "application/json",
-        "Content-Disposition": "attachment; filename=users.json",
-    }
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────────
