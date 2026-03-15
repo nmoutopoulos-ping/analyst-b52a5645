@@ -483,7 +483,7 @@
 <div class="view active" id="viewAnalysis">
   <div class="page-header">
     <div class="page-title">New Analysis</div>
-    <div class="page-sub">Submit a property for underwriting. Results will be emailed when ready.</div>
+    <div class="page-sub">Submit a property for underwriting. Check the Deals tab for results.</div>
   </div>
 
   <div class="success-banner" id="successBanner">
@@ -992,7 +992,7 @@ document.getElementById("runBtn").addEventListener("click", async ()=>{
     const res=await fetch("/trigger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
-      document.getElementById("successBannerSub").textContent=`${data.searchId} — Results will be emailed to you shortly.`;
+      document.getElementById("successBannerSub").textContent=`${data.searchId} — Check the Deals tab for your results.`;
       document.getElementById("successBanner").className="success-banner on";
       saveForm();
     } else {
