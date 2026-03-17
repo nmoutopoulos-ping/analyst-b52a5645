@@ -32,7 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock, Thread
 
-from flask import Flask, jsonify, make_response, redirect, request, session
+from flask import Flask, jsonify, make_response, redirect, request, send_file, session
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
@@ -187,14 +187,34 @@ def patch_settings():
     return jsonify({"ok": True, "assumptions": merged}), 200
 
 
-# ── CRM app ───────────────────────────────────────────────────────────────────────
+# ── CRM app (React build takes priority, falls back to legacy crm.html) ───────────
+STATIC_DIST = Path(__file__).parent / "static" / "dist"
+
 @app.route("/app")
 @app.route("/app/")
-def crm_app():
+@app.route("/app/<path:subpath>")
+def crm_app(subpath=""):
+    # Serve built React app if available
+    if STATIC_DIST.exists():
+        # Try to serve an exact file first (JS/CSS assets)
+        asset = STATIC_DIST / subpath if subpath else None
+        if asset and asset.exists() and asset.is_file():
+            return send_file(str(asset))
+        # Otherwise serve index.html (React handles routing client-side)
+        index = STATIC_DIST / "index.html"
+        if index.exists():
+            return index.read_text(), 200, {"Content-Type": "text/html; charset=utf-8"}
+    # Fallback to legacy crm.html
     crm_path = Path(__file__).parent / "crm.html"
     if crm_path.exists():
         return crm_path.read_text(), 200, {"Content-Type": "text/html; charset=utf-8"}
     return "CRM not found", 404
+
+# Serve Vite static assets (JS/CSS bundles)
+@app.route("/assets/<path:filename>")
+def vite_assets(filename):
+    assets_dir = STATIC_DIST / "assets"
+    return send_file(str(assets_dir / filename))
 
 
 # ── Deals API ─────────────────────────────────────────────────────────────────────
