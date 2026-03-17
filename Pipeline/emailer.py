@@ -13,7 +13,7 @@ from pathlib import Path
 
 from config import EMAIL_CFG
 from helpers import shorten_address, unit_counts as _unit_counts, parse_num
-from assumptions import DEFAULTS as _ASSUMPTION_DEFAULTS
+from assumptions import DEFAULTS as _ASSUMPTION_DEFAULTS, compute_proforma
 
 
 def generate_summary(search_meta, combos, comp_summary):
@@ -94,29 +94,23 @@ def generate_email_body(search_meta, comp_summary, excel_fn, docx_fn,
 
     total_annual  = gross_annual + comm_annual   # residential + commercial
 
-    # ── Year-1 pro forma — use user's saved assumptions (fall back to defaults) ──
-    _a            = {**_ASSUMPTION_DEFAULTS, **(assumptions or {})}
-    _LTV          = _a["ltv"]
-    _CLOSING_PCT  = _a["closingPct"]
-    _VACANCY      = _a["vacancy"]
-    _OTHER_INC_MO = _a["otherIncMo"]
-    _OPEX_RATIO   = _a["opexRatio"]
-    _INT_RATE     = _a["intRate"]
-    _RENT_GROWTH1 = _a["rentGrowth1"]
-
-    _gpr1      = total_annual * (1 + _RENT_GROWTH1)
-    _vac_loss  = _gpr1 * _VACANCY
-    _other_inc = _OTHER_INC_MO * (total_units or 1) * 12
-    _egi1      = _gpr1 - _vac_loss + _other_inc
-    _opex1     = _egi1 * _OPEX_RATIO
-    _noi1      = _egi1 - _opex1
-    _all_in    = price * (1 + _CLOSING_PCT) + cost
-    _equity    = price * (1 - _LTV + _CLOSING_PCT) + cost
-    _loan      = price * _LTV
-    _ds1       = _loan * _INT_RATE
-    _ncf1      = _noi1 - _ds1
-    _unlev_coc = (_noi1  / _all_in)  if _all_in  else 0
-    _lev_coc   = (_ncf1  / _equity)  if _equity  else 0
+    # ── Year-1 pro forma ─ use user's saved assumptions (fall back to defaults) ──
+    _a         = {**_ASSUMPTION_DEFAULTS, **(assumptions or {})}
+    _pf        = compute_proforma(total_annual, total_units, price, cost, _a)
+    _gpr1      = _pf["gpr1"]
+    _vac_loss  = _pf["vac_loss"]
+    _other_inc = _pf["other_inc"]
+    _egi1      = _pf["egi1"]
+    _opex1     = _pf["opex1"]
+    _noi1      = _pf["noi1"]
+    _all_in    = _pf["all_in"]
+    _equity    = _pf["equity"]
+    _ds1       = _pf["ds1"]
+    _ncf1      = _pf["ncf1"]
+    _unlev_coc = _pf["unlev_coc"]
+    _lev_coc   = _pf["lev_coc"]
+    _VACANCY   = _pf["vacancy"]
+    _OPEX_RATIO = _pf["opex_ratio"]
 
     lines = []
     lines.append(f"Your investment search results are ready.")
