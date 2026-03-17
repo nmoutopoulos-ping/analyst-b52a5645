@@ -153,6 +153,28 @@ def fetch_deals(api_key: str | None = None) -> list[dict]:
     return resp.json() or []
 
 
+def fetch_deal_by_id(search_id: str, api_key: str | None = None) -> dict | None:
+    """
+    Return a single deal by search_id, or None if not found.
+    Optionally scoped to a specific api_key for access control.
+    """
+    url, key = _get_credentials()
+    endpoint = f"{url}/rest/v1/{TABLE}"
+
+    params: dict = {"select": "*", "search_id": f"eq.{search_id}", "limit": "1"}
+    if api_key:
+        params["api_key"] = f"eq.{api_key}"
+
+    resp = requests.get(
+        endpoint,
+        params=params,
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    results = resp.json()
+    return results[0] if results else None
+
+
 def update_deal_stage(search_id: str, stage: str) -> None:
     """Update the deal_stage for a given search_id."""
     url, key = _get_credentials()
