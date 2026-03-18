@@ -90,6 +90,7 @@ def add_cors(response):
 @app.route("/health",     methods=["OPTIONS"])
 @app.route("/deals",      methods=["OPTIONS"])
 @app.route("/settings",   methods=["OPTIONS"])
+@app.route("/deals/<search_id>", methods=["OPTIONS"])
 @app.route("/crm/login",  methods=["OPTIONS"])
 def preflight():
     return make_response("", 204)
@@ -240,6 +241,22 @@ def deals():
         log.error(f"Error fetching deals: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
+
+@app.route("/deals/<search_id>", methods=["GET"])
+def deal_detail(search_id):
+    """Return a single deal by search_id — avoids loading all deals in DealDetailPage."""
+    api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
+    if not api_key or api_key not in USERS:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+    try:
+        deal = fetch_deal_by_id(search_id, api_key)
+        if not deal:
+            return jsonify({"ok": False, "error": "Deal not found"}), 404
+        return jsonify({"ok": True, "deal": deal}), 200
+    except Exception as e:
+        log.error(f"Error fetching deal {search_id}: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/deals/<search_id>/download/<file_type>", methods=["GET"])
 def deal_download(search_id, file_type):
