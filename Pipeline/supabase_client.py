@@ -229,3 +229,64 @@ def delete_user(api_key: str) -> None:
         headers=_headers(key),
     )
     resp.raise_for_status()
+
+
+# ── Templates ──────────────────────────────────────────────────────────────────
+TEMPLATES_TABLE = "templates"
+
+def fetch_templates(api_key: str) -> list[dict]:
+    """Return all templates for a user, newest first."""
+    url, key = _get_credentials()
+    resp = requests.get(
+        f"{url}/rest/v1/{TEMPLATES_TABLE}",
+        params={"select": "*", "api_key": f"eq.{api_key}", "order": "created_at.desc"},
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    return resp.json() or []
+
+def fetch_template_by_id(template_id: str, api_key: str) -> dict | None:
+    """Return a single template by id, scoped to the user."""
+    url, key = _get_credentials()
+    resp = requests.get(
+        f"{url}/rest/v1/{TEMPLATES_TABLE}",
+        params={"select": "*", "id": f"eq.{template_id}", "api_key": f"eq.{api_key}", "limit": "1"},
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    results = resp.json()
+    return results[0] if results else None
+
+def insert_template(data: dict) -> dict:
+    """Insert a new template row and return it."""
+    url, key = _get_credentials()
+    resp = requests.post(
+        f"{url}/rest/v1/{TEMPLATES_TABLE}",
+        json=data,
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    return resp.json()[0]
+
+def update_template(template_id: str, api_key: str, data: dict) -> dict:
+    """Update an existing template and return the updated row."""
+    url, key = _get_credentials()
+    resp = requests.patch(
+        f"{url}/rest/v1/{TEMPLATES_TABLE}",
+        json=data,
+        params={"id": f"eq.{template_id}", "api_key": f"eq.{api_key}"},
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    results = resp.json()
+    return results[0] if results else {}
+
+def delete_template(template_id: str, api_key: str) -> None:
+    """Delete a template row."""
+    url, key = _get_credentials()
+    resp = requests.delete(
+        f"{url}/rest/v1/{TEMPLATES_TABLE}",
+        params={"id": f"eq.{template_id}", "api_key": f"eq.{api_key}"},
+        headers=_headers(key, {"Prefer": "return=minimal"}),
+    )
+    resp.raise_for_status()
