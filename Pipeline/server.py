@@ -508,7 +508,15 @@ def crm_analyze():
         "radius": template.get("radius", 0.5),
         "minComps": template.get("min_comps"),
         "maxComps": template.get("max_comps"),
-        "combos": template.get("combos", []),
+        "combos": [
+            {
+                "beds": c.get("beds", c.get("bed", 0)),
+                "baths": c.get("baths", c.get("bath", 0)),
+                "units": c.get("units", 1),
+                "type": c.get("type", "Apartment"),
+            }
+            for c in template.get("combos", [])
+        ],
         "commercial": template.get("commercial_spaces", []),
         "assumptions": assumptions.load(api_key),
     }
