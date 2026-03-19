@@ -184,11 +184,11 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
         if key not in seen:
             seen.add(key); unique.append(c)
 
-            # Pre-clear rows 16–25 to remove stale data from previous runs
-        for _r in range(16, 26):
-            for _col in (2, 3, 4, 5):
-                ws.cell(row=_r, column=_col).value = None
-        for i in range(20 - 16 + 1):
+    # Pre-clear rows 16-25 to remove stale data from previous runs
+    for _r in range(16, 26):
+        for _col in (2, 3, 4, 5):
+            ws.cell(row=_r, column=_col).value = None
+    for i in range(20 - 16 + 1):
         r = 16 + i
         if i < len(unique):
             c = unique[i]
@@ -301,11 +301,11 @@ def populate_inputs(ws, search_meta: dict, combos: list,
         if key not in seen:
             seen.add(key); unique.append(c)
 
-            # Pre-clear rows 13–25 to remove stale data from previous runs
-        for _r in range(13, 26):
-            for _col in range(1, 9):
-                ws.cell(row=_r, column=_col).value = None
-        for i in range(19 - 13 + 1):
+    # Pre-clear rows 13-25 to remove stale data from previous runs
+    for _r in range(13, 26):
+        for _col in range(1, 9):
+            ws.cell(row=_r, column=_col).value = None
+    for i in range(19 - 13 + 1):
         r = 13 + i
         if i < len(unique):
             c = unique[i]
