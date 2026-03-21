@@ -31,6 +31,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from threading import Lock, Thread
+import io
+import zipfile
 
 from flask import Flask, jsonify, make_response, redirect, request, send_file, session
 
@@ -412,6 +414,31 @@ def admin_remove_user(key):
     log.info(f"Admin: removed user {user['name']} <{user['email']}> key={key}")
     return jsonify({"ok": True, "removed": user}), 200
 
+
+
+# ── Extension ZIP download ─────────────────────────────────────────────────────
+EXTENSION_DIR = Path(__file__).resolve().parent.parent / "Extension" / "ping-analyst_v1"
+
+@app.route("/api/extension-zip", methods=["GET", "OPTIONS"])
+def extension_zip():
+    """Zip the Chrome extension folder on-the-fly and return it."""
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    if not EXTENSION_DIR.exists():
+        return jsonify({"ok": False, "error": "Extension files not found on server"}), 404
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fpath in EXTENSION_DIR.rglob("*"):
+            if fpath.is_file():
+                arcname = "ping-analyst-extension/" + str(fpath.relative_to(EXTENSION_DIR))
+                zf.write(fpath, arcname)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="ping-analyst-extension.zip",
+    )
 
 # ── Entry point ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
