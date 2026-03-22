@@ -149,97 +149,152 @@ async function geocodeAddress(address) {
 }
 
 // ── Server URL ─────────────────────────────────────────────────────────────────
-function setConfiguredState(url) {
-  $("modelUnconfigured").style.display = "none";
-  $("modelConfigured").style.display   = "flex";
-  $("modelUrlDisplay").textContent      = url;
-  $("modelCard").classList.add("ok");
-  $("modelStatus").className = "model-status ok";
-  $("modelStatusText").textContent = "CONNECTED";
-}
-function setUnconfiguredState() {
-  $("modelUnconfigured").style.display = "";
-  $("modelConfigured").style.display   = "none";
-  $("modelCard").classList.remove("ok");
-  $("modelStatus").className = "model-status";
-  $("modelStatusText").textContent = "NOT CONFIGURED";
-}
-$("configureBtn").addEventListener("click", () => {
-  const url = $("modelUrl").value.trim();
-  if (!url || !url.startsWith("https://")) { $("modelUrl").classList.add("err"); return; }
-  $("modelUrl").classList.remove("err");
-  chrome.storage.sync.set({ serverUrl: url });
-  setConfiguredState(url);
-});
-$("editUrlBtn").addEventListener("click", () => {
-  chrome.storage.sync.remove("serverUrl"); $("modelUrl").value = ""; setUnconfiguredState();
-});
+// ── Hardcoded server URL ──────────────────────────────────────────
+const SERVER_URL = "https://analyst-ra00.onrender.com";
 
-// ── Access Key ─────────────────────────────────────────────────────────────────
-function setKeyConfigured(key) {
-  $("keyUnconfigured").style.display = "none";
-  $("keyConfigured").style.display   = "flex";
-  $("keyDisplay").textContent         = key.slice(0, 9) + "****";  // PING-XXXX-****
-  $("keyCard").classList.add("ok");
-  $("keyStatus").className = "model-status ok";
-  $("keyStatusText").textContent = "AUTHORIZED";
+// ── Auth state ──────────────────────────────────────────────────
+let currentApiKey = null;
+let currentUserName = null;
+
+function isSignedIn() { return !!currentApiKey; }
+
+function getSavedAuth() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(["ext_api_key", "ext_user_name", "ext_email"], resolve);
+  });
 }
-function setKeyUnconfigured() {
-  $("keyUnconfigured").style.display = "";
-  $("keyConfigured").style.display   = "none";
-  $("keyCard").classList.remove("ok");
-  $("keyStatus").className = "model-status";
-  $("keyStatusText").textContent = "NOT SET";
+
+function saveAuth(currentApiKey, name, email) {
+  currentApiKey = currentApiKey;
+  currentUserName = name;
+  chrome.storage.local.set({ ext_api_key: currentApiKey, ext_user_name: name, ext_email: email });
 }
-$("saveKeyBtn").addEventListener("click", () => {
-  const key = $("apiKeyInput").value.trim().toUpperCase();
-  if (!key.startsWith("PING-") || key.length < 10) {
-    $("keyError").style.display = "block"; return;
+
+function clearSavedAuth() {
+  currentApiKey = null;
+  currentUserName = null;
+  chrome.storage.local.remove(["ext_api_key", "ext_user_name", "ext_email"]);
+}
+
+// ── Sign-in UI ──────────────────────────────────────────────────
+function showSignedIn(name) {
+  $("signInForm").style.display = "none";
+  $("signedInInfo").style.display = "";
+  $("signedInName").textContent = name || "User";
+  $("templatesCard").style.display = "";
+  loadTemplates();
+}
+
+function showSignedOut() {
+  $("signInForm").style.display = "";
+  $("signedInInfo").style.display = "none";
+  $("templatesCard").style.display = "none";
+  $("signInError").style.display = "none";
+  $("signInEmail").value = "";
+  $("signInPassword").value = "";
+}
+
+async function handleSignIn() {
+  const email = $("signInEmail").value.trim();
+  const password = $("signInPassword").value;
+  if (!email || !password) {
+    $("signInError").textContent = "Please enter email and password.";
+    $("signInError").style.display = "";
+    return;
   }
-  $("keyError").style.display = "none";
-  chrome.storage.sync.set({ apiKey: key });
-  setKeyConfigured(key);
-});
-$("editKeyBtn").addEventListener("click", () => {
-  chrome.storage.sync.remove("apiKey"); $("apiKeyInput").value = ""; setKeyUnconfigured();
-});
+  $("signInBtn").disabled = true;
+  $("signInBtn").textContent = "Signing in...";
+  $("signInError").style.display = "none";
+  try {
+    const res = await fetch(SERVER_URL + "/extension/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Sign-in failed");
+    saveAuth(data.api_key, data.name, data.email);
+    showSignedIn(data.name);
+  } catch (e) {
+    $("signInError").textContent = e.message || "Sign-in failed. Check your credentials.";
+    $("signInError").style.display = "";
+  } finally {
+    $("signInBtn").disabled = false;
+    $("signInBtn").textContent = "Sign In";
+  }
+}
 
-// ── Settings ───────────────────────────────────────────────────────────────────
-function getSavedServerUrl() {
-  return new Promise(r => chrome.storage.sync.get(["serverUrl"], s => r(s.serverUrl || null)));
+function handleSignOut() {
+  clearSavedAuth();
+  showSignedOut();
 }
-function getSavedApiKey() {
-  return new Promise(r => chrome.storage.sync.get(["apiKey"], s => r(s.apiKey || null)));
-}
-async function loadSettings() {
-  chrome.storage.sync.get(
-    ["serverUrl","apiKey","address","price","cost","sqft","radius","minComps","maxComps","status","combos","commercial","commercialToggle"],
-    cfg => {
-      if (cfg.serverUrl) { $("modelUrl").value = cfg.serverUrl; setConfiguredState(cfg.serverUrl); }
-      if (cfg.apiKey)   { $("apiKeyInput").value = cfg.apiKey; setKeyConfigured(cfg.apiKey); }
-      if (cfg.address)  $("address").value  = cfg.address;
-      if (cfg.price)    $("price").value    = formatUSD(cfg.price);
-      if (cfg.cost)     $("cost").value     = formatUSD(cfg.cost);
-      if (cfg.sqft)     $("sqft").value     = cfg.sqft;
-      if (cfg.radius)   $("radius").value   = cfg.radius;
-      if (cfg.minComps) $("minComps").value = cfg.minComps;
-      if (cfg.maxComps) $("maxComps").value = cfg.maxComps;
-      if (cfg.status)   $("status").value   = cfg.status;
-      if (cfg.combos?.length) {
-        selectedCombos = cfg.combos;
-        cfg.combos.forEach(({ beds, baths }) => {
-          const cb = $(`cb_${beds}_${baths}`); if (!cb) return;
-          cb.checked = true; cb.closest(".cb-cell")?.classList.add("sel");
-        });
-        updateMatrixBadge(); updateUnitsPanel();
-        document.querySelectorAll(".combo-cb").forEach(c => { if (!c.checked) c.disabled = selectedCombos.length >= MAX_COMBOS; });
-      }
-      if (cfg.commercial?.length) selectedCommercial = cfg.commercial;
-      if (cfg.commercialToggle) { $("commercialToggle").checked = true; $("commercialPanel").classList.add("on"); renderCommercialPanel(); }
+
+// ── Templates ───────────────────────────────────────────────────
+async function loadTemplates() {
+  const list = $("templatesList");
+  list.innerHTML = '<div class="templates-empty">Loading templates...</div>';
+  try {
+    const res = await fetch(SERVER_URL + "/crm/templates?api_key=" + encodeURIComponent(currentApiKey));
+    const data = await res.json();
+    if (!data.ok || !data.templates || data.templates.length === 0) {
+      list.innerHTML = '<div class="templates-empty">No saved templates yet. Start a new search below.</div>';
+      return;
     }
-  );
-  loadPresetsStorage(() => renderSearchPresetSelect());
+    list.innerHTML = "";
+    data.templates.forEach(t => {
+      const el = document.createElement("div");
+      el.className = "template-item";
+      el.innerHTML = '<div><div class="template-name">' + (t.name || "Untitled") +
+        '</div><div class="template-address">' + (t.address || "") + '</div></div>' +
+        '<span class="template-arrow">&#8250;</span>';
+      el.addEventListener("click", () => applyTemplate(t));
+      list.appendChild(el);
+    });
+  } catch (e) {
+    list.innerHTML = '<div class="templates-empty">Could not load templates.</div>';
+  }
 }
+
+function applyTemplate(t) {
+  // Fill form fields from template
+  if (t.address) $("address").value = t.address;
+  if (t.price) $("price").value = t.price;
+  if (t.cost) $("cost").value = t.cost;
+  if (t.sqft) $("sqft").value = t.sqft;
+  if (t.radius) $("radius").value = t.radius;
+  if (t.minComps) $("minComps").value = t.minComps;
+  if (t.maxComps) $("maxComps").value = t.maxComps;
+  // Hide templates, show form
+  $("templatesCard").style.display = "none";
+  // Scroll to form
+  $("address").scrollIntoView({ behavior: "smooth" });
+}
+
+// ── Init ────────────────────────────────────────────────────────
+async function loadSettings() {
+  // Wire sign-in
+  $("signInBtn").addEventListener("click", handleSignIn);
+  $("signOutBtn").addEventListener("click", handleSignOut);
+  $("newSearchBtn").addEventListener("click", () => {
+    $("templatesCard").style.display = "none";
+  });
+
+  // Allow Enter to submit sign-in
+  $("signInPassword").addEventListener("keydown", e => {
+    if (e.key === "Enter") handleSignIn();
+  });
+
+  // Check saved auth
+  const saved = await getSavedAuth();
+  if (saved.ext_api_key) {
+    currentApiKey = saved.ext_api_key;
+    currentUserName = saved.ext_user_name;
+    showSignedIn(saved.ext_user_name);
+  } else {
+    showSignedOut();
+  }
+}
+
 function getFormVals() {
   return {
     address:  $("address").value.trim(),
@@ -268,9 +323,9 @@ function hideErr(id) { $(id).classList.remove("on"); }
     $("compsWarn").className = "warn-banner" + (mn > mx && mx ? " on" : "");
   });
 });
-function validate(vals, apiKey) {
+function validate(vals, currentApiKey) {
   let ok = true;
-  if (!apiKey) { $("formError").textContent = "Please enter your access key first."; $("formError").className = "form-error on"; return false; }
+  if (!currentApiKey) { $("formError").textContent = "Please enter your access key first."; $("formError").className = "form-error on"; return false; }
   if (!vals.address) { showErr("addressError"); $("address").classList.add("err"); ok = false; } else { hideErr("addressError"); $("address").classList.remove("err"); }
   const mn = parseInt(vals.minComps), mx = parseInt(vals.maxComps);
   if (!vals.radius || !vals.minComps || !vals.maxComps) { showErr("paramsError"); ok = false; } else if (mn > mx) { showErr("paramsError"); ok = false; } else { hideErr("paramsError"); }
@@ -289,16 +344,16 @@ $("runBtn").addEventListener("click", async () => {
   const vals = getFormVals();
 
   // Check server URL configured
-  const serverUrl = await getSavedServerUrl();
-  if (!serverUrl) {
+  const SERVER_URL = await getSavedServerUrl();
+  if (!SERVER_URL) {
     $("formError").textContent = "Please configure your Ping server URL first.";
     $("formError").className = "form-error on"; return;
   }
 
   // Check API key saved
-  const apiKey = await getSavedApiKey();
+  const currentApiKey = await getSavedApiKey();
   $("formError").className = "form-error";
-  if (!validate(vals, apiKey)) return;
+  if (!validate(vals, currentApiKey)) return;
 
   $("runBtn").disabled = true;
   $("runBtn").innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin .7s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Running…`;
@@ -314,7 +369,7 @@ $("runBtn").addEventListener("click", async () => {
 
   try {
     const body = {
-      api_key:    apiKey,
+      api_key: currentApiKey,
       address:    resolvedAddress || vals.address,
       lat:        resolvedCoords?.lat  ?? null,
       lng:        resolvedCoords?.lng  ?? null,
@@ -339,7 +394,7 @@ $("runBtn").addEventListener("click", async () => {
       preset_name: chosenPresetName,
     };
 
-    const res  = await fetch(`${serverUrl}/trigger`, {
+    const res  = await fetch(`${SERVER_URL}/trigger`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
