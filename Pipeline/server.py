@@ -39,7 +39,7 @@ from flask import Flask, jsonify, make_response, redirect, request, send_file, s
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
 import assumptions
-from supabase_client import fetch_users_dict, insert_user, delete_user
+from supabase_client import fetch_users_dict, insert_user, delete_user, fetch_user_by_email, update_extension_password
 
 # ── User registry (loaded from Supabase at startup) ───────────────────────────
 # In-memory dict for fast per-request auth lookups.
@@ -439,6 +439,54 @@ def extension_zip():
         as_attachment=True,
         download_name="ping-analyst-extension.zip",
     )
+
+
+# ── Extension auth ────────────────────────────────────────────────────
+@app.route("/extension/login", methods=["POST", "OPTIONS"])
+def extension_login():
+    """Validate email + extension_password for Chrome extension sign-in."""
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    data = request.get_json(force=True)
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"ok": False, "error": "Email and password are required"}), 400
+    user = fetch_user_by_email(email)
+    if not user:
+        return jsonify({"ok": False, "error": "Invalid email or password"}), 401
+    stored_pw = user.get("extension_password") or ""
+    if not stored_pw or stored_pw != password:
+        return jsonify({"ok": False, "error": "Invalid email or password"}), 401
+    return jsonify({
+        "ok": True,
+        "api_key": user["api_key"],
+        "name": user.get("name", ""),
+        "email": user["email"],
+    })
+
+
+@app.route("/extension/password", methods=["PATCH", "OPTIONS"])
+def extension_password():
+    """Set or update the extension password for the authenticated user."""
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    api_key = request.headers.get("X-Api-Key") or request.args.get("api_key")
+    if not api_key or api_key not in USERS:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    data = request.get_json(force=True)
+    new_password = (data.get("password") or "").strip()
+    if len(new_password) < 4:
+        return jsonify({"ok": False, "error": "Password must be at least 4 characters"}), 400
+    try:
+        update_extension_password(api_key, new_password)
+        # Update in-memory cache too
+        USERS[api_key]["extension_password"] = new_password
+        return jsonify({"ok": True, "message": "Extension password updated"})
+    except Exception as e:
+        log.error("Failed to update extension password: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 # ── Entry point ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
