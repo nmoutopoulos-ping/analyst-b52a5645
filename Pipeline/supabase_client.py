@@ -224,11 +224,11 @@ def fetch_users_dict() -> dict:
     url, key = _get_credentials()
     resp = requests.get(
         f"{url}/rest/v1/{USERS_TABLE}",
-        params={"select": "api_key,email,name"},
+        params={"select": "api_key,email,name,extension_password"},
         headers=_headers(key),
     )
     resp.raise_for_status()
-    return {u["api_key"]: {"email": u["email"], "name": u["name"]} for u in resp.json()}
+    return {u["api_key"]: {"email": u["email"], "name": u["name"], "extension_password": u.get("extension_password")} for u in resp.json()}
 
 
 def insert_user(api_key: str, email: str, name: str) -> None:
@@ -252,6 +252,38 @@ def delete_user(api_key: str) -> None:
     )
     resp.raise_for_status()
 
+
+
+
+# ── Extension Auth ──────────────────────────────────────────────────────────────
+
+def update_extension_password(api_key: str, password: str) -> None:
+    """Set or update the extension_password for a user."""
+    url, key = _get_credentials()
+    resp = requests.patch(
+        f"{url}/rest/v1/{USERS_TABLE}",
+        json={"extension_password": password},
+        params={"api_key": f"eq.{api_key}"},
+        headers=_headers(key, {"Prefer": "return=minimal"}),
+    )
+    resp.raise_for_status()
+
+
+def fetch_user_by_email(email: str) -> dict | None:
+    """Return a single user row by email (for extension login)."""
+    url, key = _get_credentials()
+    resp = requests.get(
+        f"{url}/rest/v1/{USERS_TABLE}",
+        params={
+            "select": "api_key,email,name,extension_password",
+            "email": f"eq.{email}",
+            "limit": "1",
+        },
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0] if rows else None
 
 # ── Templates ──────────────────────────────────────────────────────────────────
 TEMPLATES_TABLE = "templates"
