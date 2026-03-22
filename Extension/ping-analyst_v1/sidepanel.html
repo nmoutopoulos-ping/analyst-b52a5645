@@ -487,7 +487,24 @@
     .preset-edit-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
     .btn-manage { font-size: 11px; font-weight: 600; color: var(--blue); background: none; border: none; cursor: pointer; font-family: inherit; padding: 0; transition: color .1s; }
     .btn-manage:hover { color: #1d4ed8; }
-  </style>
+  
+    /* Templates */
+    .template-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r);
+      margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+    }
+    .template-item:hover { border-color: var(--navy); background: var(--blue-light); }
+    .template-name { font-weight: 600; font-size: 13px; color: var(--text); }
+    .template-address { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+    .template-arrow { color: var(--text-3); font-size: 16px; }
+    .templates-empty { text-align: center; padding: 16px; color: var(--text-3); font-size: 12px; }
+
+    /* Sign-in related */
+    #signInCard .field-label { display: block; margin-bottom: 4px; }
+    #signInCard input { width: 100%; }
+
+    </style>
 </head>
 <body>
 
@@ -507,58 +524,50 @@
 
   <div class="body">
 
-    <!-- Model Link -->
-    <div class="card model-card" id="modelCard">
+    <!-- Sign In -->
+    <div id="signInCard" class="card model-card">
       <div class="card-header">
         <span class="card-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          Model Link
-        </span>
-        <span class="model-status" id="modelStatus">
-          <span class="model-dot"></span>
-          <span id="modelStatusText">NOT CONFIGURED</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Sign In
         </span>
       </div>
       <div class="card-body">
-        <p class="model-desc">Enter your Ping server URL to run analyses and receive results by email.</p>
-        <div id="modelUnconfigured">
-          <div class="model-input-row">
-            <input id="modelUrl" type="url" placeholder="https://analyst-production-xxxx.up.railway.app"/>
-            <button class="btn-configure" id="configureBtn">Configure</button>
+        <p class="model-desc">Sign in with your Ping Analyst email and extension password.</p>
+        <div id="signInForm">
+          <div class="field" style="margin-bottom:10px;">
+            <label class="field-label" for="signInEmail">Email</label>
+            <input id="signInEmail" type="email" placeholder="you@company.com" autocomplete="email"/>
           </div>
+          <div class="field" style="margin-bottom:10px;">
+            <label class="field-label" for="signInPassword">Extension Password</label>
+            <input id="signInPassword" type="password" placeholder="Extension password" autocomplete="current-password"/>
+          </div>
+          <span class="field-error" id="signInError" style="display:none;">Invalid email or password.</span>
+          <button class="btn-configure" id="signInBtn" style="margin-top:4px;width:100%;">Sign In</button>
         </div>
-        <div class="model-configured" id="modelConfigured" style="display:none;">
-          <span class="model-url-text" id="modelUrlDisplay"></span>
-          <button class="btn-text" id="editUrlBtn">Edit</button>
+        <div id="signedInInfo" style="display:none;">
+          <div class="model-configured">
+            <span class="model-url-text">Signed in as <strong id="signedInName"></strong></span>
+            <button class="btn-text" id="signOutBtn">Sign Out</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Access Key -->
-    <div class="card model-card" id="keyCard">
+    <!-- Templates -->
+    <div id="templatesCard" class="card" style="display:none;">
       <div class="card-header">
         <span class="card-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-          Access Key
-        </span>
-        <span class="model-status" id="keyStatus">
-          <span class="model-dot"></span>
-          <span id="keyStatusText">NOT SET</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Search Templates
         </span>
       </div>
       <div class="card-body">
-        <p class="model-desc">Enter your Ping access key to authorize analyses. Contact your admin if you need one.</p>
-        <div id="keyUnconfigured">
-          <div class="model-input-row">
-            <input id="apiKeyInput" type="text" placeholder="PING-XXXX-XXXX" autocomplete="off" style="font-family:monospace;letter-spacing:0.5px;"/>
-            <button class="btn-configure" id="saveKeyBtn">Save</button>
-          </div>
-          <span class="field-error" id="keyError" style="display:none;">Please enter a valid access key.</span>
-        </div>
-        <div class="model-configured" id="keyConfigured" style="display:none;">
-          <span class="model-url-text" id="keyDisplay"></span>
-          <button class="btn-text" id="editKeyBtn">Edit</button>
-        </div>
+        <div id="templatesList"></div>
+        <button class="btn-configure" id="newSearchBtn" style="margin-top:8px;width:100%;">
+          + New Search
+        </button>
       </div>
     </div>
 
