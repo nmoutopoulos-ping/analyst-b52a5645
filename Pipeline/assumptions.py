@@ -202,7 +202,7 @@ def compute_returns(
     ds = pf["ds1"]  # IO debt service (constant throughout hold)
 
     if not equity or equity <= 0:
-        return {"noi": round(noi1, 0), "cap_rate": None, "coc": None, "moic": None, "irr": None}
+        return {"noi": round(noi1, 0), "cap_rate": None, "coc": None, "moic": None, "irr": None, "loan_amount": None, "down_payment": None, "monthly_cash_flow": None, "dscr": None}
 
     # Entry cap rate (NOI / purchase price)
     entry_cap = noi1 / price if price else 0
@@ -232,4 +232,8 @@ def compute_returns(
         "coc": round(pf["lev_coc"], 4),
         "moic": round(moic, 3),
         "irr": round(irr, 4) if irr is not None else None,
+        "loan_amount": round(loan, 0),
+        "down_payment": round(equity, 0),
+        "monthly_cash_flow": round(pf["ncf1"] / 12, 0),
+        "dscr": round(noi1 / ds, 2) if ds else None,
     }
