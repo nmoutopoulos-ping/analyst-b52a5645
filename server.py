@@ -416,6 +416,98 @@ def admin_remove_user(key):
 
 
 
+
+
+# ── Extension download landing page ──────────────────────────────────────────
+# Absorbs Render cold-start auto-refreshes so they don't each trigger a file
+# download.  Users go to /download instead of hitting /api/extension-zip directly.
+@app.route("/download", methods=["GET"])
+def download_page():
+    """Serve a lightweight landing page for extension download."""
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Ping Analyst Extension</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #e2e8f0;
+    }
+    .card {
+      text-align: center; padding: 3rem 2.5rem;
+      background: #1e293b; border-radius: 1rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,.4);
+      max-width: 420px; width: 90%%;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: .5rem; color: #f8fafc; }
+    p  { font-size: .95rem; color: #94a3b8; margin-bottom: 1.5rem; line-height: 1.5; }
+    .btn {
+      display: inline-block; padding: .85rem 2rem;
+      background: #3b82f6; color: #fff; border: none; border-radius: .5rem;
+      font-size: 1rem; font-weight: 600; cursor: pointer;
+      transition: background .2s;
+    }
+    .btn:hover { background: #2563eb; }
+    .btn:disabled { background: #475569; cursor: default; }
+    .status { margin-top: 1rem; font-size: .85rem; color: #64748b; }
+    .instructions {
+      margin-top: 2rem; text-align: left; font-size: .85rem;
+      color: #94a3b8; line-height: 1.6;
+    }
+    .instructions ol { padding-left: 1.2rem; }
+    .instructions li { margin-bottom: .3rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Ping Analyst Extension</h1>
+    <p>Download the Chrome extension to run underwriting analysis from any browser tab.</p>
+    <button class="btn" id="dlBtn" onclick="startDownload()">
+      Download Extension (.zip)
+    </button>
+    <div class="status" id="status"></div>
+    <div class="instructions">
+      <strong>After downloading:</strong>
+      <ol>
+        <li>Unzip the file</li>
+        <li>Go to <code>chrome://extensions</code></li>
+        <li>Enable "Developer mode" (top right)</li>
+        <li>Click "Load unpacked" and select the unzipped folder</li>
+      </ol>
+    </div>
+  </div>
+  <script>
+    var downloaded = false;
+    function startDownload() {
+      if (downloaded) return;
+      downloaded = true;
+      var btn = document.getElementById('dlBtn');
+      var status = document.getElementById('status');
+      btn.disabled = true;
+      btn.textContent = 'Downloading...';
+      status.textContent = 'Your download should start automatically.';
+      var a = document.createElement('a');
+      a.href = '/api/extension-zip';
+      a.download = 'ping-analyst-extension.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() {
+        btn.textContent = 'Downloaded';
+        status.textContent = 'Done! Follow the steps below to install.';
+      }, 2000);
+    }
+  </script>
+</body>
+</html>"""
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
 # ── Extension ZIP download ─────────────────────────────────────────────────────
 EXTENSION_DIR = Path(__file__).resolve().parent.parent / "Extension" / "ping-analyst_v1"
 
