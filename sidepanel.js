@@ -164,10 +164,10 @@ function getSavedAuth() {
   });
 }
 
-function saveAuth(currentApiKey, name, email) {
-  currentApiKey = currentApiKey;
+function saveAuth(apiKey, name, email) {
+  currentApiKey = apiKey;
   currentUserName = name;
-  chrome.storage.local.set({ ext_api_key: currentApiKey, ext_user_name: name, ext_email: email });
+  chrome.storage.local.set({ ext_api_key: apiKey, ext_user_name: name, ext_email: email });
 }
 
 function clearSavedAuth() {
@@ -343,15 +343,8 @@ function validate(vals, currentApiKey) {
 $("runBtn").addEventListener("click", async () => {
   const vals = getFormVals();
 
-  // Check server URL configured
-  const SERVER_URL = await getSavedServerUrl();
-  if (!SERVER_URL) {
-    $("formError").textContent = "Please configure your Ping server URL first.";
-    $("formError").className = "form-error on"; return;
-  }
-
-  // Check API key saved
-  const currentApiKey = await getSavedApiKey();
+  // Server URL is hardcoded at module level
+  // Use module-level currentApiKey (set on sign-in)
   $("formError").className = "form-error";
   if (!validate(vals, currentApiKey)) return;
 
