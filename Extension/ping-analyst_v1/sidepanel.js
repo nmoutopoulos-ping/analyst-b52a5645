@@ -1,3 +1,12 @@
+
+// ── Auth Gate: hide gated sections until sign-in verified ──
+(function initAuthGate() {
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.auth-gated').forEach(function(el) { el.style.display = 'none'; });
+    var footer = document.querySelector('#viewSearch .footer');
+    if (footer) footer.classList.add('auth-gated');
+  });
+})();
 // sidepanel.js — Ping Analyst v2.0
 
 const $ = id => document.getElementById(id);
@@ -178,6 +187,15 @@ function clearSavedAuth() {
 
 // ── Sign-in UI ──────────────────────────────────────────────────
 function showSignedIn(name) {
+  document.querySelectorAll('.auth-gated').forEach(function(el) {
+    el.style.display = '';
+    el.classList.add('revealing');
+    setTimeout(function() { el.classList.add('revealed'); el.classList.remove('revealing'); }, 50);
+  });
+  var footer = document.querySelector('#viewSearch .footer');
+  if (footer) { footer.style.display = ''; footer.classList.remove('auth-gated'); }
+  var signInCard = document.getElementById('signInCard');
+  if (signInCard) signInCard.classList.add('signed-in');
   $("signInForm").style.display = "none";
   $("signedInInfo").style.display = "";
   $("signedInName").textContent = name || "User";
@@ -186,6 +204,14 @@ function showSignedIn(name) {
 }
 
 function showSignedOut() {
+  document.querySelectorAll('.auth-gated').forEach(function(el) {
+    el.style.display = 'none';
+    el.classList.remove('revealing', 'revealed');
+  });
+  var footer = document.querySelector('#viewSearch .footer');
+  if (footer) footer.style.display = 'none';
+  var signInCard = document.getElementById('signInCard');
+  if (signInCard) signInCard.classList.remove('signed-in');
   $("signInForm").style.display = "";
   $("signedInInfo").style.display = "none";
   $("templatesCard").style.display = "none";
@@ -230,7 +256,76 @@ function handleSignOut() {
 }
 
 // ── Templates ───────────────────────────────────────────────────
+async 
+// ── 2-Way Sync: Templates & Assumption Presets ──
+async function syncTemplatesFromServer() {
+  try {
+    var resp = await fetch(SERVER_URL + '/api/search-templates', {
+      headers: { 'X-Extension-Key': currentApiKey }
+    });
+    if (!resp.ok) return null;
+    var serverTemplates = await resp.json();
+    if (Array.isArray(serverTemplates) && serverTemplates.length > 0) {
+      chrome.storage.local.set({ search_templates: serverTemplates });
+      return serverTemplates;
+    }
+  } catch(e) { console.warn('Template sync failed:', e); }
+  return null;
+}
+
+async function pushTemplatesToServer(templates) {
+  try {
+    await fetch(SERVER_URL + '/api/search-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Extension-Key': currentApiKey },
+      body: JSON.stringify(templates)
+    });
+  } catch(e) { console.warn('Template push failed:', e); }
+}
+
+async function syncPresetsFromServer() {
+  try {
+    var resp = await fetch(SERVER_URL + '/api/assumption-presets', {
+      headers: { 'X-Extension-Key': currentApiKey }
+    });
+    if (!resp.ok) return null;
+    var data = await resp.json();
+    if (data && data.presets && data.presets.length > 0) {
+      chrome.storage.local.set({ assumption_presets: JSON.stringify(data) });
+      return data;
+    }
+  } catch(e) { console.warn('Presets sync failed:', e); }
+  return null;
+}
+
+async function pushPresetsToServer(presets) {
+  try {
+    await fetch(SERVER_URL + '/api/assumption-presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Extension-Key': currentApiKey },
+      body: JSON.stringify(presets)
+    });
+  } catch(e) { console.warn('Presets push failed:', e); }
+}
+
 async function loadTemplates() {
+  var serverTpls = await syncTemplatesFromServer();
+  if (serverTpls) {
+    var list = document.getElementById('templatesList');
+    if (list) {
+      list.innerHTML = '';
+      serverTpls.forEach(function(t) {
+        var item = document.createElement('div');
+        item.className = 'template-item';
+        item.innerHTML = '<div><div class="template-name">' + (t.name || t.address || 'Untitled') + '</div><div class="template-address">' + (t.address || '') + '</div></div><span class="template-arrow">&#8250;</span>';
+        item.addEventListener('click', function() { applyTemplate(t); });
+        list.appendChild(item);
+      });
+      document.getElementById('templatesCard').style.display = '';
+    }
+    return;
+  }
+  // Fall back to local storage
   const list = $("templatesList");
   list.innerHTML = '<div class="templates-empty">Loading templates...</div>';
   try {
@@ -515,6 +610,17 @@ let settingsSelected   = "";   // preset currently highlighted in settings view
 let editingPreset      = null; // null = adding new, string = name of preset being edited
 
 function loadPresetsStorage(cb) {
+  syncPresetsFromServer().then(function(serverData) {
+    if (serverData && serverData.presets) {
+      window.__presetsCache = serverData.presets;
+      window.__defaultPresetId = serverData.defaultId || null;
+      if (cb) cb(serverData);
+      return;
+    }
+    _loadPresetsLocal(cb);
+  }).catch(function() { _loadPresetsLocal(cb); });
+}
+function _loadPresetsLocal(cb) {
   chrome.storage.sync.get(["assumptionPresets","defaultPresetName","searchActivePreset"], cfg => {
     assumptionPresets  = cfg.assumptionPresets?.length ? cfg.assumptionPresets : SEED_PRESETS.map(p => ({...p}));
     defaultPresetName  = cfg.defaultPresetName  || assumptionPresets[0]?.name || "";
@@ -525,6 +631,8 @@ function loadPresetsStorage(cb) {
 }
 
 function savePresetsStorage() {
+  var presetsData = { presets: window.__presetsCache || [], defaultId: window.__defaultPresetId || null };
+  pushPresetsToServer(presetsData);
   chrome.storage.sync.set({ assumptionPresets, defaultPresetName, searchActivePreset });
 }
 
@@ -778,3 +886,21 @@ $("saveProfileBtn").addEventListener("click", () => {
 buildMatrix();
 loadSettings();
 wireUSDInputs();
+
+
+// ── Intercept chrome.storage saves for 2-way sync ──
+(function() {
+  var origLocalSet = chrome.storage.local.set.bind(chrome.storage.local);
+  chrome.storage.local.set = function(items, cb) {
+    if (items.search_templates && typeof pushTemplatesToServer === 'function') {
+      pushTemplatesToServer(items.search_templates);
+    }
+    if (items.assumption_presets && typeof pushPresetsToServer === 'function') {
+      try {
+        var parsed = typeof items.assumption_presets === 'string' ? JSON.parse(items.assumption_presets) : items.assumption_presets;
+        pushPresetsToServer(parsed);
+      } catch(e) {}
+    }
+    return origLocalSet(items, cb);
+  };
+})();
