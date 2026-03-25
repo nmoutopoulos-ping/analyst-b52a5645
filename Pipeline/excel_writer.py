@@ -2,53 +2,57 @@
 excel_writer.py — Ping Pipeline Excel Population
 --------------------------------------------------
 Writes live RentCast comp data and subject-property inputs into the
-Multifamily Model Template.  Three sheet targets:
+Multifamily Model Template.
 
-  Raw Comps   — every individual comp listing
-  Assumptions — subject-property inputs + unit mix (drives all cash-flow formulas)
-  Inputs      — display-only unit-mix summary panel
+Three sheet targets:
+  Raw Comps    — every individual comp listing
+  Assumptions  — subject-property inputs + unit mix (drives all cash-flow formulas)
+  Inputs       — display-only unit-mix summary panel
 """
 
 from datetime import datetime
-
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
 from helpers import shorten_address, parse_num
 
-# ── Shared styles ──────────────────────────────────────────────────────────────
-ALT_FILL  = PatternFill("solid", fgColor="F8FAFC")
+# ── Shared styles ────────────────────────────────────────────────────────────────
+ALT_FILL = PatternFill("solid", fgColor="F8FAFC")
 BLUE_FONT = Font(name="Arial", size=9, color="0000FF")   # pipeline-written inputs
 
 
-# ── Raw Comps ──────────────────────────────────────────────────────────────────
+# ── Raw Comps ────────────────────────────────────────────────────────────────────
 
 def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
     """
-    Overwrite Raw Comps data rows (rows 5+). Rows 1-4 are untouched:
+    Overwrite Raw Comps data rows (rows 5+).
+
+    Rows 1-4 are untouched:
       Row 2 = sheet title
       Row 3 = subtitle / note
       Row 4 = column headers (baked into the template — not rewritten)
 
     Critical column positions — Assumptions AVERAGEIFS hard-reference these:
-      Col I (9)  = price/rent      ← AVERAGEIFS range
-      Col J (10) = filter_beds     ← AVERAGEIFS criteria
-      Col K (11) = filter_baths    ← AVERAGEIFS criteria
-      Col L (12) = squareFootage   ← AVERAGEIFS range (avg SF)
+      Col I (9)  = price/rent    ← AVERAGEIFS range
+      Col J (10) = filter_beds   ← AVERAGEIFS criteria
+      Col K (11) = filter_baths  ← AVERAGEIFS criteria
+      Col L (12) = squareFootage ← AVERAGEIFS range (avg SF)
 
-    Note: AVERAGEIFS formulas in Assumptions reference $I$4:$I$871 (starting at
-    the header row). The header text in row 4 is safely ignored by AVERAGEIFS
-    since its numeric criteria will never match a text cell.
+    Note: AVERAGEIFS formulas in Assumptions reference $I$4:$I$871
+    (starting at the header row). The header text in row 4 is safely
+    ignored by AVERAGEIFS since its numeric criteria will never match a
+    text cell.
     """
     from openpyxl.styles import Border, Side, Alignment as _Align
     from openpyxl.utils import get_column_letter as _gcl
 
-    _thin   = Side(style="thin",   color="E2E8F0")
+    _thin   = Side(style="thin", color="E2E8F0")
     _medium = Side(style="medium", color="94A3B8")
     _thin_b = Border(bottom=_thin)
     _med_b  = Border(bottom=_medium)
-    _LEFT   = _Align(horizontal="left",   vertical="center")
-    _CTR    = _Align(horizontal="center", vertical="center")
-    _RIGHT  = _Align(horizontal="right",  vertical="center")
+
+    _LEFT  = _Align(horizontal="left",   vertical="center")
+    _CTR   = _Align(horizontal="center", vertical="center")
+    _RIGHT = _Align(horizontal="right",  vertical="center")
+
     _HDR_BG = PatternFill("solid", fgColor="1E3A5F")
     _HDR_F  = Font(bold=True, color="FFFFFF", name="Arial", size=8)
     _DAT_F  = Font(name="Arial", size=8, color="1F2937")
@@ -60,33 +64,35 @@ def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
     # (label, col_width, data_align)
     # Column B = col 2 (col A is a narrow spacer)
     COL_SPEC = [
-        ("#",              5,  _CTR),   # B  2
-        ("Purchase Price", 16, _RIGHT), # C  3
-        ("Improvements",   14, _RIGHT), # D  4
-        ("Rank",           6,  _CTR),   # E  5
-        ("Dist (m)",       9,  _RIGHT), # F  6
-        ("Dist (km)",      9,  _RIGHT), # G  7
-        ("Unit Type",      13, _LEFT),  # H  8
-        ("Rent / Mo ★",   12, _RIGHT), # I  9  ← AVERAGEIFS range
-        ("Beds ★",         7,  _CTR),   # J  10 ← AVERAGEIFS criteria
-        ("Baths ★",        8,  _CTR),   # K  11 ← AVERAGEIFS criteria
-        ("Sq Ft ★",        9,  _RIGHT), # L  12 ← AVERAGEIFS range
-        ("Bedrooms",       10, _CTR),   # M  13
-        ("Bathrooms",      10, _CTR),   # N  14
-        ("Address",        34, _LEFT),  # O  15
-        ("Property Type",  14, _LEFT),  # P  16
-        ("Status",         10, _CTR),   # Q  17
-        ("DOM",            7,  _CTR),   # R  18
-        ("Latitude",       11, _RIGHT), # S  19
-        ("Longitude",      11, _RIGHT), # T  20
-        ("URL",            12, _LEFT),  # U  21
-        ("Listing ID",     18, _LEFT),  # V  22
+        ("#",              5,  _CTR),    # B 2
+        ("Purchase Price", 16, _RIGHT),  # C 3
+        ("Improvements",   14, _RIGHT),  # D 4
+        ("Rank",            6, _CTR),    # E 5
+        ("Dist (m)",        9, _RIGHT),  # F 6
+        ("Dist (km)",       9, _RIGHT),  # G 7
+        ("Unit Type",      13, _LEFT),   # H 8
+        ("Rent / Mo ★",   12, _RIGHT),  # I 9  ← AVERAGEIFS range
+        ("Beds ★",         7, _CTR),    # J 10 ← AVERAGEIFS criteria
+        ("Baths ★",        8, _CTR),    # K 11 ← AVERAGEIFS criteria
+        ("Sq Ft ★",        9, _RIGHT),  # L 12 ← AVERAGEIFS range
+        ("Bedrooms",       10, _CTR),    # M 13
+        ("Bathrooms",      10, _CTR),    # N 14
+        ("Address",        34, _LEFT),   # O 15
+        ("Property Type",  14, _LEFT),   # P 16
+        ("Status",         10, _CTR),    # Q 17
+        ("DOM",             7, _CTR),    # R 18
+        ("Latitude",       11, _RIGHT),  # S 19
+        ("Longitude",      11, _RIGHT),  # T 20
+        ("URL",            12, _LEFT),   # U 21
+        ("Listing ID",    18, _LEFT),   # V 22
     ]
+
     COL_FMTS = {
         3: "$#,##0", 4: "$#,##0", 5: "0", 6: "0", 7: "0.00",
-        9: "$#,##0", 10: "0",     11: "0.00", 12: "0",
-        13: "0",     14: "0.00",  19: "0.00", 20: "0.00",
+        9: "$#,##0", 10: "0", 11: "0.00", 12: "0",
+        13: "0", 14: "0.00", 19: "0.00", 20: "0.00",
     }
+
     VALS = [
         lambda r: r["purchase_price"],
         lambda r: r["improvements"],
@@ -114,25 +120,25 @@ def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
     for j, (_, width, _) in enumerate(COL_SPEC):
         col = j + 2
         ws.column_dimensions[_gcl(col)].width = width
-
     ws.column_dimensions["A"].width = 0.5
     ws.freeze_panes = "B5"
 
     for i, row in enumerate(all_rows):
-        r    = i + 5
+        r = i + 5
         fill = ALT_FILL if i % 2 == 0 else None
-        idx  = ws.cell(row=r, column=2, value=i + 1)
+
+        idx = ws.cell(row=r, column=2, value=i + 1)
         idx.font = _DAT_F; idx.alignment = _CTR
-        if fill:
-            idx.fill = fill
+        if fill: idx.fill = fill
+
         for j, fn in enumerate(VALS):
             col = j + 3
             _, _, align = COL_SPEC[j + 1]
-            v  = fn(row)
+            v = fn(row)
             cl = ws.cell(row=r, column=col, value=v)
-            cl.font      = _DAT_F
+            cl.font = _DAT_F
             cl.alignment = align
-            cl.border    = _thin_b
+            cl.border = _thin_b
             fmt = COL_FMTS.get(col)
             if fmt and v not in (None, ""):
                 cl.number_format = fmt
@@ -140,43 +146,68 @@ def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
                 cl.fill = fill
 
 
-
 # ── Assumptions ───────────────────────────────────────────────────────────────
 
 def populate_assumptions(ws, search_meta: dict, combos: list,
                          comp_summary: list,
-                         commercial_spaces: list = None) -> None:
+                         commercial_spaces: list = None,
+                         assump: dict = None) -> None:
     """
-    Write subject-property inputs to the Assumptions sheet.
-    This sheet drives Pro Forma, Returns, and Pricing Scenarios via
-    cross-sheet formulas.
+    Write subject-property inputs AND underwriting assumptions to the
+    Assumptions sheet.  This sheet drives Pro Forma, Returns, and Pricing
+    Scenarios via cross-sheet formulas.
 
     Header block (rows 3-4):
-      C3 = Property Name (short address)
-      C4 = "Search ID  |  Full address"
+      C3  = Property Name (short address)
+      C4  = "Search ID | Full address"
 
     Model inputs (drive all downstream formulas):
       C7  = Acquisition Price
       C10 = CapEx / Renovation Budget
       C12 = Total Units
       B16:D20 = unit-type labels + beds + baths (drive AVERAGEIFS comp lookup)
+
+    Financial assumptions (NEW — previously left empty / hardcoded):
+      C22 = GPR (formula =I21, stays dynamic with unit mix)
+      C25 = Vacancy rate
+      C8  = Closing costs %
+      C26 = Other income per unit per month
+      C29 = OpEx ratio
+      C30 = OpEx growth
+      C34 = LTV
+      C36 = Interest rate
+      C37 = IO period (months)
+      C38 = Amortization (years)
+      C39 = Loan term (years)
+      C40 = Origination fee %
+      C44 = Hold period (years)
+      C45 = Exit cap rate
+      C46 = Selling costs %
+      C49 = GP co-invest %
+      C50 = LP pref %
+      C51 = GP promote %
+      C55:G55 = Rent growth Years 1-5
     """
+    assump = assump or {}
+
     short = shorten_address(search_meta["address"])
-    ws["C3"] = short; ws["C3"].font = BLUE_FONT
+    ws["C3"] = short;  ws["C3"].font = BLUE_FONT
 
     search_id = search_meta.get("searchId", "—")
     address   = search_meta.get("address", "—")
-    ws["C4"] = f"{search_id}  |  {address}"; ws["C4"].font = BLUE_FONT
+    ws["C4"] = f"{search_id} | {address}";  ws["C4"].font = BLUE_FONT
 
     _price = parse_num(search_meta.get("price"))
     if _price:
-        ws["C7"] = _price; ws["C7"].font = BLUE_FONT
+        ws["C7"] = _price;  ws["C7"].font = BLUE_FONT
+
     _cost = parse_num(search_meta.get("cost"))
     if _cost:
-        ws["C10"] = _cost; ws["C10"].font = BLUE_FONT
+        ws["C10"] = _cost;  ws["C10"].font = BLUE_FONT
+
     _total_units = parse_num(search_meta.get("totalUnits"), as_int=True)
     if _total_units:
-        ws["C12"] = _total_units; ws["C12"].font = BLUE_FONT
+        ws["C12"] = _total_units;  ws["C12"].font = BLUE_FONT
 
     seen, unique = set(), []
     for c in combos:
@@ -188,6 +219,7 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
     for _r in range(16, 26):
         for _col in (2, 3, 4, 5):
             ws.cell(row=_r, column=_col).value = None
+
     for i in range(20 - 16 + 1):
         r = 16 + i
         if i < len(unique):
@@ -198,22 +230,122 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
                 ba   = int(bf) if bf == int(bf) else bf
             except (ValueError, TypeError):
                 beds, ba = c["beds"], c["baths"]
+
             ws.cell(row=r, column=2, value=f"{beds}BR/{ba}BA").font = BLUE_FONT
             ws.cell(row=r, column=3, value=float(c["beds"])).font   = BLUE_FONT
             ws.cell(row=r, column=4, value=float(c["baths"])).font  = BLUE_FONT
+
             # Write actual unit count to col E, overriding the template formula
             try:
                 units_val = int(float(c.get("units", 0) or 0))
             except (ValueError, TypeError):
                 units_val = 0
-            ws.cell(row=r, column=5, value=units_val if units_val > 0 else None).font = BLUE_FONT
+            ws.cell(row=r, column=5,
+                    value=units_val if units_val > 0 else None).font = BLUE_FONT
         else:
             ws.cell(row=r, column=2, value=None)
             ws.cell(row=r, column=3, value=None)
             ws.cell(row=r, column=4, value=None)
             ws.cell(row=r, column=5, value=None)
 
-    # ── Commercial Spaces (rows 64+) ──────────────────────────────────────────
+    # ── NEW: Write GPR and all financial assumptions ─────────────────────────
+    # C22 = GPR — use formula so it stays dynamic with unit mix edits
+    ws["C22"] = "=I21"
+    ws["C22"].font = BLUE_FONT
+
+    # C25 = Vacancy (CRITICAL — was previously empty, broke entire Pro Forma)
+    ws["C25"] = assump.get("vacancy", 0.05)
+    ws["C25"].font = BLUE_FONT
+    ws["C25"].number_format = "0.00%"
+
+    # Closing costs
+    ws["C8"] = assump.get("closing_pct", assump.get("closingPct", 0.02))
+    ws["C8"].font = BLUE_FONT
+    ws["C8"].number_format = "0.00%"
+
+    # Other income per unit per month
+    ws["C26"] = assump.get("other_inc_mo", assump.get("otherIncMo", 75))
+    ws["C26"].font = BLUE_FONT
+    ws["C26"].number_format = "$#,##0"
+
+    # Operating expenses
+    ws["C29"] = assump.get("opex_ratio", assump.get("opexRatio", 0.35))
+    ws["C29"].font = BLUE_FONT
+    ws["C29"].number_format = "0.00%"
+
+    ws["C30"] = assump.get("opex_growth", 0.03)
+    ws["C30"].font = BLUE_FONT
+    ws["C30"].number_format = "0.00%"
+
+    # Financing
+    ws["C34"] = assump.get("ltv", 0.70)
+    ws["C34"].font = BLUE_FONT
+    ws["C34"].number_format = "0.00%"
+
+    ws["C36"] = assump.get("int_rate", assump.get("intRate", 0.065))
+    ws["C36"].font = BLUE_FONT
+    ws["C36"].number_format = "0.00%"
+
+    ws["C37"] = assump.get("io_period_mo", 24)
+    ws["C37"].font = BLUE_FONT
+
+    ws["C38"] = assump.get("amort_years", 30)
+    ws["C38"].font = BLUE_FONT
+
+    ws["C39"] = assump.get("loan_term_years", 10)
+    ws["C39"].font = BLUE_FONT
+
+    ws["C40"] = assump.get("orig_fee_pct", 0.01)
+    ws["C40"].font = BLUE_FONT
+    ws["C40"].number_format = "0.00%"
+
+    # Disposition / hold
+    ws["C44"] = assump.get("hold_period_years", 5)
+    ws["C44"].font = BLUE_FONT
+
+    ws["C45"] = assump.get("exit_cap_rate", 0.07)
+    ws["C45"].font = BLUE_FONT
+    ws["C45"].number_format = "0.00%"
+
+    ws["C46"] = assump.get("selling_costs_pct", 0.04)
+    ws["C46"].font = BLUE_FONT
+    ws["C46"].number_format = "0.00%"
+
+    # GP / LP structure
+    ws["C49"] = assump.get("gp_coinvest_pct", 0.10)
+    ws["C49"].font = BLUE_FONT
+    ws["C49"].number_format = "0.00%"
+
+    ws["C50"] = assump.get("lp_pref_pct", 0.08)
+    ws["C50"].font = BLUE_FONT
+    ws["C50"].number_format = "0.00%"
+
+    ws["C51"] = assump.get("gp_promote_pct", 0.20)
+    ws["C51"].font = BLUE_FONT
+    ws["C51"].number_format = "0.00%"
+
+    # Rent growth Years 1-5
+    ws["C55"] = assump.get("rent_growth_1", assump.get("rentGrowth1", 0.03))
+    ws["C55"].font = BLUE_FONT
+    ws["C55"].number_format = "0.00%"
+
+    ws["D55"] = assump.get("rent_growth_2", 0.03)
+    ws["D55"].font = BLUE_FONT
+    ws["D55"].number_format = "0.00%"
+
+    ws["E55"] = assump.get("rent_growth_3", 0.025)
+    ws["E55"].font = BLUE_FONT
+    ws["E55"].number_format = "0.00%"
+
+    ws["F55"] = assump.get("rent_growth_4", 0.025)
+    ws["F55"].font = BLUE_FONT
+    ws["F55"].number_format = "0.00%"
+
+    ws["G55"] = assump.get("rent_growth_5", 0.025)
+    ws["G55"].font = BLUE_FONT
+    ws["G55"].number_format = "0.00%"
+
+    # ── Commercial Spaces (rows 64+) ────────────────────────────────────────
     if commercial_spaces:
         _NAV_BG = PatternFill("solid", fgColor="1E3A5F")
         _NAV_F  = Font(bold=True, color="FFFFFF", name="Arial", size=9)
@@ -223,51 +355,57 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
 
         SECT = 64
         CH   = 65
-        D0   = 66   # first data row
+        D0   = 66  # first data row
 
         # Section header
         c = ws.cell(row=SECT, column=2, value="⑩ COMMERCIAL SPACES ($/SF/Yr — NNN)")
-        c.font = _NAV_F; c.fill = _NAV_BG
+        c.font = _NAV_F;  c.fill = _NAV_BG
 
         # Column headers
         for col, lbl in [(2, "Space Type"), (3, "SF"), (4, "$/SF/Yr"), (5, "Gross Rent/Yr")]:
             cell = ws.cell(row=CH, column=col, value=lbl)
-            cell.font = _GRY_F; cell.fill = _GRY_BG
+            cell.font = _GRY_F;  cell.fill = _GRY_BG
 
-        total_sf = 0; total_gross = 0.0
+        total_sf = 0;  total_gross = 0.0
         for i, space in enumerate(commercial_spaces[:5]):
             r = D0 + i
             try:
-                sf    = int(float(space.get("sqft",     0) or 0))
-                rpsf  = float(space.get("rentPerSF", 0) or 0)
+                sf   = int(float(space.get("sqft", 0) or 0))
+                rpsf = float(space.get("rentPerSF", 0) or 0)
                 gross = sf * rpsf
             except (ValueError, TypeError):
                 sf, rpsf, gross = 0, 0, 0.0
-            total_sf += sf; total_gross += gross
+
+            total_sf  += sf;  total_gross += gross
             fill = ALT_FILL if i % 2 == 0 else None
+
             for col, val, fmt in [
                 (2, space.get("type", ""), None),
-                (3, sf or None,            "#,##0"),
+                (3, sf   or None,          "#,##0"),
                 (4, rpsf or None,          "$#,##0.00"),
                 (5, gross or None,         "$#,##0"),
             ]:
                 cell = ws.cell(row=r, column=col, value=val)
                 cell.font = BLUE_FONT
-                if fmt and val is not None: cell.number_format = fmt
-                if fill: cell.fill = fill
+                if fmt and val is not None:
+                    cell.number_format = fmt
+                if fill:
+                    cell.fill = fill
 
         # Totals row
         tot_row = D0 + len(commercial_spaces)
-        ws.cell(row=tot_row, column=2, value="TOTAL").font = Font(bold=True, name="Arial", size=9, color="1F2937")
+        ws.cell(row=tot_row, column=2, value="TOTAL").font = Font(
+            bold=True, name="Arial", size=9, color="1F2937")
         c_sf = ws.cell(row=tot_row, column=3, value=total_sf or None)
         c_sf.font = Font(bold=True, name="Arial", size=9, color="1F2937")
         c_sf.number_format = "#,##0"
         c_gr = ws.cell(row=tot_row, column=5, value=round(total_gross, 0) or None)
-        c_gr.font = Font(bold=True, name="Arial", size=9, color="059669" if total_gross > 0 else "1F2937")
+        c_gr.font = Font(bold=True, name="Arial", size=9,
+                         color="059669" if total_gross > 0 else "1F2937")
         c_gr.number_format = "$#,##0"
 
 
-# ── Inputs ─────────────────────────────────────────────────────────────────────
+# ── Inputs ───────────────────────────────────────────────────────────────────
 
 def populate_inputs(ws, search_meta: dict, combos: list,
                     comp_summary: list,
@@ -283,9 +421,11 @@ def populate_inputs(ws, search_meta: dict, combos: list,
     """
     short = shorten_address(search_meta["address"])
     ws.cell(row=5, column=2, value=short).font = BLUE_FONT
+
     _price = parse_num(search_meta.get("price"))
     if _price:
         ws.cell(row=6, column=2, value=_price).font = BLUE_FONT
+
     _total_units = parse_num(search_meta.get("totalUnits"), as_int=True)
     _cost = parse_num(search_meta.get("cost"))
     if _total_units:
@@ -305,6 +445,7 @@ def populate_inputs(ws, search_meta: dict, combos: list,
     for _r in range(13, 26):
         for _col in range(1, 9):
             ws.cell(row=_r, column=_col).value = None
+
     for i in range(19 - 13 + 1):
         r = 13 + i
         if i < len(unique):
@@ -315,19 +456,23 @@ def populate_inputs(ws, search_meta: dict, combos: list,
                 ba   = int(bf) if bf == int(bf) else bf
             except (ValueError, TypeError):
                 beds, ba = c["beds"], c["baths"]
+
             cs = comp_lookup.get((str(c["beds"]), str(c["baths"])), {})
+
             # Use actual unit count from combo data
             try:
                 n_units = int(float(c.get("units", 0) or 0)) or None
             except (ValueError, TypeError):
                 n_units = None
-            label   = f"{beds}BR/{ba}BA"
-            ws.cell(row=r, column=1, value=label).font          = BLUE_FONT
-            ws.cell(row=r, column=2, value=beds).font           = BLUE_FONT
-            ws.cell(row=r, column=3, value=ba).font             = BLUE_FONT
-            ws.cell(row=r, column=4, value=n_units).font        = BLUE_FONT
+
+            label = f"{beds}BR/{ba}BA"
+            ws.cell(row=r, column=1, value=label).font = BLUE_FONT
+            ws.cell(row=r, column=2, value=beds).font   = BLUE_FONT
+            ws.cell(row=r, column=3, value=ba).font      = BLUE_FONT
+            ws.cell(row=r, column=4, value=n_units).font  = BLUE_FONT
             ws.cell(row=r, column=5, value=cs.get("avg_rent")).font = BLUE_FONT  # Avg Rent/Mo
             ws.cell(row=r, column=6, value=cs.get("avg_sqft")).font = BLUE_FONT  # Avg SF
+
             d = ws.cell(row=r, column=4).column_letter
             f = ws.cell(row=r, column=5).column_letter  # avg_rent is now in col 5
             g = ws.cell(row=r, column=7).column_letter
@@ -337,13 +482,13 @@ def populate_inputs(ws, search_meta: dict, combos: list,
             for col in range(1, 9):
                 ws.cell(row=r, column=col).value = None
 
-    # ── Commercial Leasing Section (rows 80+) ─────────────────────────────────
+    # ── Commercial Leasing Section (rows 80+) ──────────────────────────────
     if commercial_spaces:
         # Aggregate totals
         total_sf = 0; total_gross = 0.0
         for s in commercial_spaces:
             try:
-                sf   = int(float(s.get("sqft",     0) or 0))
+                sf   = int(float(s.get("sqft", 0) or 0))
                 rpsf = float(s.get("rentPerSF", 0) or 0)
                 total_sf    += sf
                 total_gross += sf * rpsf
@@ -365,43 +510,47 @@ def populate_inputs(ws, search_meta: dict, combos: list,
 
         # Section header
         c = ws.cell(row=R_SECT, column=1, value="⑩ COMMERCIAL SPACES")
-        c.font = _NAV_F; c.fill = _NAV_BG
+        c.font = _NAV_F;  c.fill = _NAV_BG
 
         # Column headers
         for col, lbl in [(1, "Space Type"), (2, "Total SF"),
                          (3, "$/SF/Yr"), (4, "Gross Annual Rent")]:
             cell = ws.cell(row=R_CH, column=col, value=lbl)
-            cell.font = _HDR_F; cell.fill = _HDR_BG
+            cell.font = _HDR_F;  cell.fill = _HDR_BG
 
         # Data rows
         for i, s in enumerate(commercial_spaces[:5]):
             r = R_D0 + i
             try:
-                sf    = int(float(s.get("sqft",     0) or 0))
-                rpsf  = float(s.get("rentPerSF", 0) or 0)
+                sf   = int(float(s.get("sqft", 0) or 0))
+                rpsf = float(s.get("rentPerSF", 0) or 0)
                 gross = sf * rpsf
             except (ValueError, TypeError):
                 sf, rpsf, gross = 0, 0, 0.0
+
             fill = ALT_FILL if i % 2 == 0 else None
             for col, val, fmt in [
-                (1, s.get("type", ""),  None),
-                (2, sf or None,         "#,##0"),
-                (3, rpsf or None,       "$#,##0.00"),
-                (4, gross or None,      "$#,##0"),
+                (1, s.get("type", ""), None),
+                (2, sf   or None,      "#,##0"),
+                (3, rpsf or None,      "$#,##0.00"),
+                (4, gross or None,     "$#,##0"),
             ]:
                 cell = ws.cell(row=r, column=col, value=val)
                 cell.font = _DAT3
-                if fmt and val is not None: cell.number_format = fmt
-                if fill: cell.fill = fill
+                if fmt and val is not None:
+                    cell.number_format = fmt
+                if fill:
+                    cell.fill = fill
 
         # Totals row
         for col, val, fmt, bold in [
-            (1, "TOTAL",              None,     True),
-            (2, total_sf or None,     "#,##0",  True),
-            (3, None,                 None,     False),
-            (4, total_gross or None,  "$#,##0", True),
+            (1, "TOTAL",               None,    True),
+            (2, total_sf or None,      "#,##0", True),
+            (3, None,                  None,    False),
+            (4, total_gross or None,   "$#,##0", True),
         ]:
             cell = ws.cell(row=R_TOT, column=col, value=val)
             cell.font = Font(bold=bold, name="Arial", size=9, color="1F2937")
             cell.fill = _TOT_BG
-            if fmt and val is not None: cell.number_format = fmt
+            if fmt and val is not None:
+                cell.number_format = fmt
