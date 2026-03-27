@@ -65,6 +65,26 @@ def _gen_api_key() -> str:
 
 USERS: dict = _load_users()
 
+def _refresh_users() -> dict | None:
+    """Reload USERS from Supabase. Returns the refreshed dict, or None on failure."""
+    global USERS
+    try:
+        USERS = fetch_users_dict()
+        log.info(f"USERS cache refreshed — {len(USERS)} user(s)")
+        return USERS
+    except Exception as e:
+        log.error(f"Failed to refresh USERS: {e}")
+        return None
+
+def _get_user(api_key: str) -> dict | None:
+    """Look up user by api_key, refreshing cache on miss."""
+    user = USERS.get(api_key)
+    if user:
+        return user
+    # Key not in cache — maybe a new user was added. Refresh once.
+    _refresh_users()
+    return USERS.get(api_key)
+
 # ── Setup ───────────────────────────────────────────────────────────────────────
 app            = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ping-dev-secret-change-in-prod")
@@ -104,7 +124,7 @@ def ext_search_templates():
     if request.method == "OPTIONS":
         return "", 204
     api_key = request.headers.get("X-Extension-Key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"error": "unauthorized"}), 401
     user = USERS[api_key]
     if request.method == "GET":
@@ -120,7 +140,7 @@ def ext_assumption_presets():
     if request.method == "OPTIONS":
         return "", 204
     api_key = request.headers.get("X-Extension-Key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"error": "unauthorized"}), 401
     user = USERS[api_key]
     if request.method == "GET":
@@ -154,7 +174,7 @@ def trigger():
     if not api_key:
         return jsonify({"ok": False, "error": "Missing API key"}), 400
 
-    user = USERS.get(api_key)
+    user = _get_user(api_key)
     if not user:
         log.warning(f"Unauthorized trigger attempt with key: {api_key[:8]}…")
         return jsonify({
@@ -211,7 +231,7 @@ def health():
 def get_settings():
     """Return the user's current underwriting assumptions."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     return jsonify({"ok": True, "assumptions": assumptions.load(api_key)}), 200
 
@@ -222,7 +242,7 @@ def patch_settings():
     data    = request.get_json(force=True, silent=True) or {}
     api_key = (data.get("api_key") or "").strip() or \
               (request.headers.get("X-Api-Key") or "").strip()
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     merged = assumptions.save(api_key, data)
     log.info(f"Settings updated for {USERS[api_key]['name']}")
@@ -266,7 +286,7 @@ from supabase_client import fetch_deals, get_download_url, update_deal_stage, fe
 def deals():
     """Return list of all completed deals from Supabase, sorted newest first."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
 
     try:
@@ -282,7 +302,7 @@ def deals():
 def deal_detail(search_id):
     """Return a single deal by search_id — avoids loading all deals in DealDetailPage."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     try:
         deal = fetch_deal_by_id(search_id, api_key)
@@ -297,7 +317,7 @@ def deal_detail(search_id):
 def deal_download(search_id, file_type):
     """Return a signed Supabase Storage URL and redirect to file download."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
 
     if file_type not in ("excel", "docx"):
@@ -324,7 +344,7 @@ def deal_download(search_id, file_type):
 def patch_deal_stage(search_id):
     """Update the deal stage for a given deal (now server-side, not localStorage)."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
 
     data  = request.get_json(force=True, silent=True) or {}
@@ -597,7 +617,7 @@ def extension_password():
     if request.method == "OPTIONS":
         return make_response("", 204)
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key")
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
     data = request.get_json(force=True)
     new_password = (data.get("password") or "").strip()
@@ -626,7 +646,7 @@ from supabase_client import fetch_templates, fetch_template_by_id, insert_templa
 @app.route("/crm/templates", methods=["GET"])
 def crm_list_templates():
     api_key = request.args.get("api_key", "").strip()
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     try:
         templates = fetch_templates(api_key)
@@ -639,7 +659,7 @@ def crm_list_templates():
 def crm_create_template():
     data = request.get_json(force=True, silent=True) or {}
     api_key = data.pop("api_key", "").strip()
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     user = USERS[api_key]
     data["api_key"] = api_key
@@ -657,7 +677,7 @@ def crm_create_template():
 def crm_update_template(template_id):
     data = request.get_json(force=True, silent=True) or {}
     api_key = data.pop("api_key", "").strip()
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     try:
         template = update_template(template_id, api_key, data)
@@ -669,7 +689,7 @@ def crm_update_template(template_id):
 @app.route("/crm/templates/<template_id>", methods=["DELETE"])
 def crm_delete_template(template_id):
     api_key = request.args.get("api_key", "").strip()
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     try:
         delete_template(template_id, api_key)
@@ -683,7 +703,7 @@ def crm_analyze():
     """Run the underwriting pipeline from a saved template."""
     data = request.get_json(force=True, silent=True) or {}
     api_key = data.get("api_key", "").strip()
-    if not api_key or api_key not in USERS:
+    if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
     template_id = data.get("template_id", "").strip()
     if not template_id:
