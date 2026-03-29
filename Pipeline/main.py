@@ -1,5 +1,5 @@
 """
-main.py — Ping Pipeline Entry Point
+main.py â Ping Pipeline Entry Point
 --------------------------------------
 Orchestrates the full underwriting pipeline:
 
@@ -11,8 +11,8 @@ Orchestrates the full underwriting pipeline:
   6. Mark search processed locally
 
 Entry points:
-  run_pipeline_from_payload(payload) ← called by server.py on POST /trigger
-  run_pipeline()                     ← legacy sheet-based runner (local dev only)
+  run_pipeline_from_payload(payload) â called by server.py on POST /trigger
+  run_pipeline()                     â legacy sheet-based runner (local dev only)
 """
 
 import json
@@ -39,7 +39,7 @@ from supabase_client import upload_deal_file, insert_deal
 from assumptions import compute_returns
 
 
-# ── Shared pipeline core ──────────────────────────────────────────────────────
+# ââ Shared pipeline core ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def _run_search(search_id: str, search_meta: dict, combos: list,
                 commercial_spaces: list, assump: dict | None = None) -> None:
@@ -68,7 +68,7 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
     with ThreadPoolExecutor(max_workers=max(len(combos), 1)) as ex:
         for combo, rows in [f.result() for f in as_completed(
                 {ex.submit(_fetch, c): c for c in combos})]:
-            print(f"    → {combo['type']} {combo['beds']}bd/{combo['baths']}ba: {len(rows)} comps")
+            print(f"    â {combo['type']} {combo['beds']}bd/{combo['baths']}ba: {len(rows)} comps")
             all_comp_rows.extend(rows)
 
     all_comp_rows.sort(key=lambda r: (float(r["filter_beds"]), float(r["filter_baths"])))
@@ -133,7 +133,7 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
     print(f"  [3] Populating Excel model...")
     short_name = shorten_address(search_meta["address"])
     safe_addr  = short_name.replace("/", "-").replace(":", "")[:60]
-    job_dir    = OUTPUT_DIR / f"{search_id} — {safe_addr} — {search_meta['email']}"
+    job_dir    = OUTPUT_DIR / f"{search_id} â {safe_addr} â {search_meta['email']}"
     job_dir.mkdir(parents=True, exist_ok=True)
 
     output_fn = job_dir / f"Ping_{search_id}_Model.xlsx"
@@ -143,14 +143,14 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
 
     populate_raw_comps(wb["Raw Comps"], all_comp_rows, search_meta)
 
-    # ── CHANGED: pass assump so assumptions are written to Excel ──
+    # ââ CHANGED: pass assump so assumptions are written to Excel ââ
     populate_assumptions(wb["Assumptions"], search_meta, combos,
                          comp_summary, commercial_spaces, assump=assump)
 
     populate_inputs(wb["Inputs"], search_meta, combos, comp_summary,
                     commercial_spaces)
 
-    # ── CHANGED: hide Inputs sheet (legacy, nothing references it) ──
+    # ââ CHANGED: hide Inputs sheet (legacy, nothing references it) ââ
     wb["Inputs"].sheet_state = "hidden"
 
     wb.save(output_fn)
@@ -200,8 +200,9 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
         "docx_path":    docx_storage_path,
         "results":      deal_results,
         "status":       "complete",
+        "image_url":    search_meta.get("image_url"),
 
-        # ── CHANGED: save the full assumptions used for this deal ──
+        # ââ CHANGED: save the full assumptions used for this deal ââ
         "assumptions_snapshot": assump,
     }
     insert_deal(deal_row)
@@ -213,7 +214,7 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
     print(f"  \u2705 {search_id} complete.")
 
 
-# ── Primary entry point (called by server.py) ─────────────────────────────────
+# ââ Primary entry point (called by server.py) âââââââââââââââââââââââââââââââââ
 
 def run_pipeline_from_payload(payload: dict) -> None:
     """
@@ -223,7 +224,7 @@ def run_pipeline_from_payload(payload: dict) -> None:
           minComps, maxComps, status, combos, commercial
     """
     print(f"\n{'='*60}")
-    print(f"  Ping Pipeline — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Ping Pipeline â {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
 
     search_id = payload.get("searchId",
@@ -256,6 +257,7 @@ def run_pipeline_from_payload(payload: dict) -> None:
             "cost":       payload.get("cost", ""),
             "sqft":       payload.get("sqft", ""),
             "preset_name": payload.get("preset_name", ""),
+            "image_url":  payload.get("image_url") or None,
         }
         _run_search(search_id, search_meta, combos, commercial_spaces,
                     assump=assump)
@@ -269,15 +271,15 @@ def run_pipeline_from_payload(payload: dict) -> None:
     print(f"{'='*60}\n")
 
 
-# ── Legacy entry point (local dev / sheet-based) ──────────────────────────────
+# ââ Legacy entry point (local dev / sheet-based) ââââââââââââââââââââââââââââââ
 
 def run_pipeline() -> None:
-    """Legacy runner — reads NEW rows from Google Sheets. Local dev only."""
+    """Legacy runner â reads NEW rows from Google Sheets. Local dev only."""
     from collections import defaultdict
     from fetcher import fetch_new_searches, gas_update_status
 
     print(f"\n{'='*60}")
-    print(f"  Ping Pipeline (sheet mode) — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Ping Pipeline (sheet mode) â {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
 
     print("\n[1] Fetching NEW searches from Google Sheets...")
