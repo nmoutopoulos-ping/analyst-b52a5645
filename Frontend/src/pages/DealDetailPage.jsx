@@ -152,6 +152,24 @@ export default function DealDetailPage() {
             </section>
           )}
 
+          {/* Assumptions Snapshot */}
+          {deal.assumptions_snapshot && Object.keys(deal.assumptions_snapshot).length > 0 && (
+            <section>
+              <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                Assumptions{deal.preset_name ? ` — ${deal.preset_name}` : ''}
+              </h2>
+              <DetailGrid items={[
+                ['LTV',                 deal.assumptions_snapshot.ltv != null ? (deal.assumptions_snapshot.ltv * 100).toFixed(1) + '%' : '—'],
+                ['Vacancy Rate',        deal.assumptions_snapshot.vacancy != null ? (deal.assumptions_snapshot.vacancy * 100).toFixed(1) + '%' : '—'],
+                ['Interest Rate',       deal.assumptions_snapshot.intRate != null ? (deal.assumptions_snapshot.intRate * 100).toFixed(2) + '%' : '—'],
+                ['Closing Cost %',      deal.assumptions_snapshot.closingPct != null ? (deal.assumptions_snapshot.closingPct * 100).toFixed(1) + '%' : '—'],
+                ['Operating Expense %', deal.assumptions_snapshot.opexRatio != null ? (deal.assumptions_snapshot.opexRatio * 100).toFixed(1) + '%' : '—'],
+                ['Year 1 Rent Growth',  deal.assumptions_snapshot.rentGrowth1 != null ? (deal.assumptions_snapshot.rentGrowth1 * 100).toFixed(1) + '%' : '—'],
+                ['Other Monthly Income',deal.assumptions_snapshot.otherIncMo != null ? '$' + Number(deal.assumptions_snapshot.otherIncMo).toLocaleString() : '—'],
+              ].filter(([, v]) => v !== '—')} />
+            </section>
+          )}
+
           {/* Financial Results */}
           {Object.keys(results).length > 0 && (
             <section>
