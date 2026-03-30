@@ -39,7 +39,7 @@ from flask import Flask, jsonify, make_response, redirect, request, send_file, s
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
 import assumptions
-from supabase_client import fetch_users_dict, insert_user, delete_user, fetch_user_by_email, update_extension_password
+from supabase_client import fetch_users_dict, insert_user, delete_user, fetch_user_by_email, update_extension_password, fetch_default_assumptions
 
 # ── User registry (loaded from Supabase at startup) ───────────────────────────
 # In-memory dict for fast per-request auth lookups.
@@ -188,7 +188,7 @@ def trigger():
 
     # Attach underwriting assumptions: use client-provided preset if present, else load saved user defaults
     if not payload.get("assumptions"):
-        payload["assumptions"] = assumptions.load(api_key)
+        payload["assumptions"] = fetch_default_assumptions(api_key) or assumptions.load(api_key)
 
     # Validate required fields
     if not payload.get("address"):
@@ -738,7 +738,7 @@ def crm_analyze():
             for c in template.get("combos", [])
         ],
         "commercial": template.get("commercial_spaces", []),
-        "assumptions": assumptions.load(api_key),
+        "assumptions": fetch_default_assumptions(api_key) or assumptions.load(api_key),
     }
     log.info(f"Analyze: {search_id} | {user['name']} <{user['email']}> | {template.get('address','?')}")
     def _run():
