@@ -344,3 +344,48 @@ def delete_template(template_id: str, api_key: str) -> None:
         headers=_headers(key, {"Prefer": "return=minimal"}),
     )
     resp.raise_for_status()
+
+
+
+# ── Assumption Templates ──────────────────────────────────────────────────────
+ASSUMPTION_TEMPLATES_TABLE = "assumption_templates"
+
+
+def fetch_default_assumptions(api_key: str) -> dict:
+    """
+    Fetch the user's default assumption template from Supabase.
+    Falls back to the first template if none is marked default.
+    Returns the assumptions dict, or empty dict if no templates exist.
+    """
+    url, key = _get_credentials()
+    # Try is_default=true first
+    resp = requests.get(
+        f"{url}/rest/v1/{ASSUMPTION_TEMPLATES_TABLE}",
+        params={
+            "select": "assumptions",
+            "api_key": f"eq.{api_key}",
+            "is_default": "eq.true",
+            "limit": "1",
+        },
+        headers=_headers(key),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    if rows and rows[0].get("assumptions"):
+        return rows[0]["assumptions"]
+    # Fallback: first template by created_at
+    resp = requests.get(
+        f"{url}/rest/v1/{ASSUMPTION_TEMPLATES_TABLE}",
+        params={
+            "select": "assumptions",
+            "api_key": f"eq.{api_key}",
+            "order": "created_at.asc",
+            "limit": "1",
+        },
+        headers=_headers(key),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    if rows and rows[0].get("assumptions"):
+        return rows[0]["assumptions"]
+    return {}
