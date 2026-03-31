@@ -1,5 +1,5 @@
 """
-server.py — Ping Pipeline Trigger Server
+server.py â Ping Pipeline Trigger Server
 -----------------------------------------
 Accepts a JSON POST from the Chrome extension, validates the user,
 generates a searchId, and runs the full underwriting pipeline in a
@@ -8,9 +8,9 @@ background thread. No Google Sheets or GAS dependency.
 POST /trigger
   Body: { api_key, address, lat, lng, price, cost, sqft,
           radius, minComps, maxComps, status, combos, commercial }
-  → { ok, searchId, status }   or   { ok: false, error }
+  â { ok, searchId, status }   or   { ok: false, error }
 
-GET /health → { ok, status: "idle" | "busy" }
+GET /health â { ok, status: "idle" | "busy" }
 
 Local usage:
     python3 server.py
@@ -33,6 +33,7 @@ from pathlib import Path
 from threading import Lock, Thread
 import io
 import zipfile
+import requests
 
 from flask import Flask, jsonify, make_response, redirect, request, send_file, session
 
@@ -41,7 +42,7 @@ from main import run_pipeline_from_payload
 import assumptions
 from supabase_client import fetch_users_dict, insert_user, delete_user, fetch_user_by_email, update_extension_password, fetch_default_assumptions
 
-# ── User registry (loaded from Supabase at startup) ───────────────────────────
+# ââ User registry (loaded from Supabase at startup) âââââââââââââââââââââââââââ
 # In-memory dict for fast per-request auth lookups.
 # All writes go to Supabase so changes survive redeploys.
 
@@ -50,7 +51,7 @@ def _load_users() -> dict:
     try:
         return fetch_users_dict()
     except Exception as e:
-        print(f"[WARN] Could not load users from Supabase: {e} — falling back to users.json", file=sys.stderr)
+        print(f"[WARN] Could not load users from Supabase: {e} â falling back to users.json", file=sys.stderr)
         try:
             import json as _json
             _f = Path(__file__).parent / "users.json"
@@ -70,7 +71,7 @@ def _refresh_users() -> dict | None:
     global USERS
     try:
         USERS = fetch_users_dict()
-        log.info(f"USERS cache refreshed — {len(USERS)} user(s)")
+        log.info(f"USERS cache refreshed â {len(USERS)} user(s)")
         return USERS
     except Exception as e:
         log.error(f"Failed to refresh USERS: {e}")
@@ -81,11 +82,11 @@ def _get_user(api_key: str) -> dict | None:
     user = USERS.get(api_key)
     if user:
         return user
-    # Key not in cache — maybe a new user was added. Refresh once.
+    # Key not in cache â maybe a new user was added. Refresh once.
     _refresh_users()
     return USERS.get(api_key)
 
-# ── Setup ───────────────────────────────────────────────────────────────────────
+# ââ Setup âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app            = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ping-dev-secret-change-in-prod")
 _lock          = Lock()
@@ -100,7 +101,7 @@ log = logging.getLogger("ping-server")
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 
-# ── CORS ─────────────────────────────────────────────────────────────────────────
+# ââ CORS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 @app.after_request
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"]  = "*"
@@ -118,7 +119,7 @@ def preflight():
     return make_response("", 204)
 
 
-# ── Extension: Search Templates Sync ──────────────────────
+# ââ Extension: Search Templates Sync ââââââââââââââââââââââ
 @app.route("/api/search-templates", methods=["GET", "POST", "OPTIONS"])
 def ext_search_templates():
     if request.method == "OPTIONS":
@@ -134,7 +135,7 @@ def ext_search_templates():
     return jsonify({"ok": True})
 
 
-# ── Extension: Assumption Presets Sync ────────────────────
+# ââ Extension: Assumption Presets Sync ââââââââââââââââââââ
 @app.route("/api/assumption-presets", methods=["GET", "POST", "OPTIONS"])
 def ext_assumption_presets():
     if request.method == "OPTIONS":
@@ -157,14 +158,14 @@ def crm_templates_preflight():
     return make_response("", 204)
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────────
+# ââ Helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _gen_search_id() -> str:
     date_str = datetime.now().strftime("%Y%m%d")
     rand = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"SRCH-{date_str}-{rand}"
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────────
+# ââ Routes âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 @app.route("/trigger", methods=["POST"])
 def trigger():
     payload = request.get_json(force=True, silent=True) or {}
@@ -176,13 +177,13 @@ def trigger():
 
     user = _get_user(api_key)
     if not user:
-        log.warning(f"Unauthorized trigger attempt with key: {api_key[:8]}…")
+        log.warning(f"Unauthorized trigger attempt with key: {api_key[:8]}â¦")
         return jsonify({
             "ok": False,
             "error": "Invalid API key. Contact your admin to request access.",
         }), 403
 
-    # Resolve email from key — user cannot spoof this
+    # Resolve email from key â user cannot spoof this
     email = user["email"]
     payload["email"] = email
 
@@ -226,7 +227,7 @@ def health():
     return jsonify({"ok": True, "status": status}), 200
 
 
-# ── Settings API ─────────────────────────────────────────────────────────────────
+# ââ Settings API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 @app.route("/settings", methods=["GET"])
 def get_settings():
     """Return the user's current underwriting assumptions."""
@@ -249,7 +250,7 @@ def patch_settings():
     return jsonify({"ok": True, "assumptions": merged}), 200
 
 
-# ── CRM app (React build takes priority, falls back to legacy crm.html) ───────────
+# ââ CRM app (React build takes priority, falls back to legacy crm.html) âââââââââââ
 STATIC_DIST = Path(__file__).parent / "static" / "dist"
 
 @app.route("/app")
@@ -279,7 +280,7 @@ def vite_assets(filename):
     return send_file(str(assets_dir / filename))
 
 
-# ── Deals API ─────────────────────────────────────────────────────────────────────
+# ââ Deals API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 from supabase_client import fetch_deals, get_download_url, update_deal_stage, fetch_deal_by_id
 
 @app.route("/deals", methods=["GET"])
@@ -300,7 +301,7 @@ def deals():
 
 @app.route("/deals/<search_id>", methods=["GET"])
 def deal_detail(search_id):
-    """Return a single deal by search_id — avoids loading all deals in DealDetailPage."""
+    """Return a single deal by search_id â avoids loading all deals in DealDetailPage."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
     if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
@@ -355,14 +356,14 @@ def patch_deal_stage(search_id):
 
     try:
         update_deal_stage(search_id, stage)
-        log.info(f"Deal {search_id} stage → {stage}")
+        log.info(f"Deal {search_id} stage â {stage}")
         return jsonify({"ok": True, "stage": stage}), 200
     except Exception as e:
         log.error(f"Error updating deal stage: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ── CRM Login ────────────────────────────────────────────────────────────────────
+# ââ CRM Login ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 @app.route("/crm/login", methods=["POST"])
 def crm_login():
     """
@@ -382,7 +383,7 @@ def crm_login():
     return jsonify({"ok": True, "name": user["name"], "email": user["email"]}), 200
 
 
-# ── Admin ────────────────────────────────────────────────────────────────────────
+# ââ Admin ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _admin_auth(f):
     """Decorator: require active admin session, else return 401."""
     @functools.wraps(f)
@@ -448,7 +449,7 @@ def admin_add_user():
         log.error(f"Failed to insert user into Supabase: {e}", exc_info=True)
         return jsonify({"ok": False, "error": "Failed to save user"}), 500
     USERS[key] = {"email": email, "name": name}
-    log.info(f"Admin: added user {name} <{email}> → {key}")
+    log.info(f"Admin: added user {name} <{email}> â {key}")
     return jsonify({"ok": True, "key": key, "user": USERS[key]}), 201
 
 
@@ -471,7 +472,7 @@ def admin_remove_user(key):
 
 
 
-# ── Extension download landing page ──────────────────────────────────────────
+# ââ Extension download landing page ââââââââââââââââââââââââââââââââââââââââââ
 # Absorbs Render cold-start auto-refreshes so they don't each trigger a file
 # download.  Users go to /download instead of hitting /api/extension-zip directly.
 @app.route("/download", methods=["GET"])
@@ -561,7 +562,7 @@ def download_page():
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
-# ── Extension ZIP download ─────────────────────────────────────────────────────
+# ââ Extension ZIP download âââââââââââââââââââââââââââââââââââââââââââââââââââââ
 EXTENSION_DIR = Path(__file__).resolve().parent.parent / "Extension" / "ping-analyst_v1"
 
 @app.route("/api/extension-zip", methods=["GET", "OPTIONS"])
@@ -586,7 +587,7 @@ def extension_zip():
     )
 
 
-# ── Extension auth ────────────────────────────────────────────────────
+# ââ Extension auth ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 @app.route("/extension/login", methods=["POST", "OPTIONS"])
 def extension_login():
     """Validate email + extension_password for Chrome extension sign-in."""
@@ -633,14 +634,14 @@ def extension_password():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ── Entry point ──────────────────────────────────────────────────────────────────
+# ââ Entry point ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     log.info(f"Ping Pipeline Server starting on http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-# ── Templates API ─────────────────────────────────────────────────────────────
+# ââ Templates API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 from supabase_client import fetch_templates, fetch_template_by_id, insert_template, update_template, delete_template
 
 @app.route("/crm/templates", methods=["GET"])
@@ -751,3 +752,60 @@ def crm_analyze():
                 log.error(f"[{search_id}] Pipeline error: {exc}", exc_info=True)
     Thread(target=_run, daemon=True).start()
     return jsonify({"ok": True, "searchId": search_id, "status": "started"}), 200
+
+
+# ── RentCast proxy (CRM Market Intelligence) ─────────────────────────────────
+# Proxies browser requests to RentCast API server-side to avoid CORS.
+# Key is stored in RENTCAST_API_KEY env var — never exposed to the frontend.
+
+RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "")
+
+@app.route("/api/rentcast/markets", methods=["GET", "OPTIONS"])
+def rentcast_markets_proxy():
+    """Proxy GET /api/rentcast/markets → RentCast /v1/markets"""
+    if request.method == "OPTIONS":
+        return "", 204
+    zip_code = request.args.get("zipCode", "")
+    property_type = request.args.get("propertyType", "Single Family")
+    data_type = request.args.get("dataType", "All")
+    if not zip_code:
+        return jsonify({"error": "zipCode is required"}), 400
+    if not RENTCAST_API_KEY:
+        return jsonify({"error": "RENTCAST_API_KEY not configured"}), 500
+    try:
+        resp = requests.get(
+            "https://api.rentcast.io/v1/markets",
+            params={"zipCode": zip_code, "propertyType": property_type, "dataType": data_type},
+            headers={"X-Api-Key": RENTCAST_API_KEY, "Accept": "application/json"},
+            timeout=15,
+        )
+        return (resp.text, resp.status_code, {"Content-Type": "application/json"})
+    except requests.RequestException as exc:
+        log.error(f"RentCast markets proxy error: {exc}")
+        return jsonify({"error": str(exc)}), 502
+
+
+@app.route("/api/rentcast/listings", methods=["GET", "OPTIONS"])
+def rentcast_listings_proxy():
+    """Proxy GET /api/rentcast/listings → RentCast /v1/listings/rental/long-term"""
+    if request.method == "OPTIONS":
+        return "", 204
+    zip_code = request.args.get("zipCode", "")
+    property_type = request.args.get("propertyType", "Single Family")
+    status = request.args.get("status", "Active")
+    limit = request.args.get("limit", "5")
+    if not zip_code:
+        return jsonify({"error": "zipCode is required"}), 400
+    if not RENTCAST_API_KEY:
+        return jsonify({"error": "RENTCAST_API_KEY not configured"}), 500
+    try:
+        resp = requests.get(
+            "https://api.rentcast.io/v1/listings/rental/long-term",
+            params={"zipCode": zip_code, "propertyType": property_type, "status": status, "limit": limit},
+            headers={"X-Api-Key": RENTCAST_API_KEY, "Accept": "application/json"},
+            timeout=15,
+        )
+        return (resp.text, resp.status_code, {"Content-Type": "application/json"})
+    except requests.RequestException as exc:
+        log.error(f"RentCast listings proxy error: {exc}")
+        return jsonify({"error": str(exc)}), 502
