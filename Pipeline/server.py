@@ -142,7 +142,7 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"]  = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Api-Key"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Api-Key, Authorization"
     return response
 
 @app.route("/trigger",    methods=["OPTIONS"])
