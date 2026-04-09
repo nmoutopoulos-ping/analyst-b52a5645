@@ -28,6 +28,7 @@ import random
 import secrets
 import string
 import sys
+import base64
 from datetime import datetime
 from pathlib import Path
 from threading import Lock, Thread
@@ -40,6 +41,7 @@ from flask import Flask, jsonify, make_response, redirect, request, send_file, s
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
 import assumptions
+from lease_parser import parse_lease
 from supabase_client import fetch_users_dict, insert_user, delete_user, fetch_user_by_email, update_extension_password, fetch_default_assumptions
 
 # ââ User registry (loaded from Supabase at startup) âââââââââââââââââââââââââââ
@@ -86,6 +88,40 @@ def _get_user(api_key: str) -> dict | None:
     _refresh_users()
     return USERS.get(api_key)
 
+
+def _validate_jwt(token: str) -> dict | None:
+    """
+    Validate a JWT token by decoding it and checking the exp claim.
+    Does NOT verify the signature (that would require the public key).
+    Returns the decoded payload if valid, None otherwise.
+    """
+    try:
+        # JWT format: header.payload.signature
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+
+        # Decode the payload (middle part)
+        # Add padding if needed
+        payload_str = parts[1]
+        padding = 4 - len(payload_str) % 4
+        if padding != 4:
+            payload_str += "=" * padding
+
+        payload_bytes = base64.urlsafe_b64decode(payload_str)
+        payload = json.loads(payload_bytes)
+
+        # Check if token is expired
+        exp = payload.get("exp")
+        if exp is not None:
+            if datetime.utcnow().timestamp() > exp:
+                log.debug(f"JWT token expired at {exp}")
+                return None
+
+        return payload
+    except Exception as e:
+        log.debug(f"JWT validation failed: {e}")
+        return None
 # ââ Setup âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app            = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ping-dev-secret-change-in-prod")
@@ -115,6 +151,7 @@ def add_cors(response):
 @app.route("/settings",   methods=["OPTIONS"])
 @app.route("/deals/<search_id>", methods=["OPTIONS"])
 @app.route("/crm/login",  methods=["OPTIONS"])
+@app.route("/api/parse-lease", methods=["OPTIONS"])
 def preflight():
     return make_response("", 204)
 
@@ -248,6 +285,102 @@ def patch_settings():
     merged = assumptions.save(api_key, data)
     log.info(f"Settings updated for {USERS[api_key]['name']}")
     return jsonify({"ok": True, "assumptions": merged}), 200
+
+
+# ââ Lease Parser API ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".csv", ".xlsx"}
+
+def _get_authenticated_user() -> tuple[dict | None, str | None]:
+    """
+    Try to authenticate using X-Api-Key header or Authorization Bearer JWT.
+    Returns (user_dict, api_key_or_none).
+    """
+    # Try X-Api-Key header first
+    api_key = request.headers.get("X-Api-Key", "").strip()
+    if api_key:
+        user = _get_user(api_key)
+        if user:
+            return user, api_key
+
+    # Try Authorization Bearer JWT
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        jwt_payload = _validate_jwt(token)
+        if jwt_payload:
+            # JWT is valid, but we don't have a way to map it back to a user dict
+            # For now, return a minimal user dict with the JWT payload
+            return jwt_payload, None
+
+    return None, None
+
+
+@app.route("/api/parse-lease", methods=["POST"])
+def parse_lease_endpoint():
+    """
+    Parse a lease document and extract 24 key fields using OpenAI.
+
+    Authentication: X-Api-Key header or Authorization: Bearer <jwt>
+    Content-Type: multipart/form-data
+    Body: file field with the lease document
+
+    Returns:
+        {
+            "ok": true,
+            "parsed": {24-field lease object},
+            "usage": {
+                "prompt_tokens": int,
+                "completion_tokens": int,
+                "total_tokens": int,
+                "estimated_cost": float
+            }
+        }
+    """
+    # Authenticate
+    user, api_key = _get_authenticated_user()
+    if not user:
+        return jsonify({"error": "Unauthorized. Use X-Api-Key header or Authorization: Bearer <jwt>"}), 401
+
+    # Check if file is present
+    if "file" not in request.files:
+        return jsonify({"error": "Missing 'file' field in multipart form data"}), 400
+
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    # Validate file extension
+    filename = file.filename
+    file_ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if file_ext not in ALLOWED_EXTENSIONS:
+        return jsonify({
+            "error": f"Unsupported file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        }), 400
+
+    # Read file and validate size
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({
+            "error": f"File too large. Maximum size: {MAX_FILE_SIZE / 1024 / 1024:.0f} MB"
+        }), 413
+
+    # Parse the lease
+    try:
+        log.info(f"Parsing lease file: {filename} (size: {len(file_bytes)} bytes)")
+        result = parse_lease(file_bytes, filename)
+        log.info(f"Lease parsing successful for {filename}")
+        return jsonify({
+            "ok": True,
+            "parsed": result["parsed"],
+            "usage": result["usage"]
+        }), 200
+    except ValueError as e:
+        log.error(f"Lease parsing validation error: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        log.error(f"Lease parsing error: {e}", exc_info=True)
+        return jsonify({"error": "Failed to parse lease document. See server logs for details."}), 500
 
 
 # ââ CRM app (React build takes priority, falls back to legacy crm.html) âââââââââââ
