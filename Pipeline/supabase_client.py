@@ -114,6 +114,58 @@ def get_download_url(storage_path: str) -> str:
     return f"{url}{signed}"
 
 
+def upload_deal_file_to_path(storage_path: str, local_path) -> str:
+    """
+    Upload a local file to an explicit Storage path (allows nested keys
+    like '{search_id}/versions/{version_id}.xlsx' that upload_deal_file
+    cannot construct).
+    """
+    from pathlib import Path as _Path
+    local_path = _Path(local_path)
+    url, key = _get_credentials()
+    endpoint = f"{url}/storage/v1/object/{BUCKET}/{storage_path}"
+
+    with open(local_path, "rb") as f:
+        data = f.read()
+
+    resp = requests.post(
+        endpoint,
+        data=data,
+        headers={
+            "apikey":        key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type":  "application/octet-stream",
+            "x-upsert":      "true",
+        },
+    )
+    resp.raise_for_status()
+    return storage_path
+
+
+def download_deal_file(storage_path: str, local_path) -> "Path":
+    """
+    Download a file from Storage to local disk. Used by the Rerun engine
+    to fetch the parent workbook before applying overrides.
+    """
+    from pathlib import Path as _Path
+    local_path = _Path(local_path)
+    url, key = _get_credentials()
+    endpoint = f"{url}/storage/v1/object/{BUCKET}/{storage_path}"
+
+    resp = requests.get(
+        endpoint,
+        headers={"apikey": key, "Authorization": f"Bearer {key}"},
+        stream=True,
+    )
+    resp.raise_for_status()
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(local_path, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            if chunk:
+                f.write(chunk)
+    return local_path
+
+
 # ── Database ──────────────────────────────────────────────────────────────────
 
 TABLE = "deals"
@@ -349,6 +401,86 @@ def delete_template(template_id: str, api_key: str) -> None:
 
 # ── Assumption Templates ──────────────────────────────────────────────────────
 ASSUMPTION_TEMPLATES_TABLE = "assumption_templates"
+
+
+# ── Deal Versions (Move 1: Rerun Engine) ─────────────────────────────────────
+DEAL_VERSIONS_TABLE = "deal_versions"
+DEAL_VERSION_SELECT = (
+    "id,deal_id,parent_version_id,label,version_number,workbook_path,"
+    "assumption_overrides,results,status,error,created_by,created_at"
+)
+
+
+def insert_deal_version(data: dict) -> dict:
+    """Insert a new deal_versions row and return the inserted row."""
+    url, key = _get_credentials()
+    resp = requests.post(
+        f"{url}/rest/v1/{DEAL_VERSIONS_TABLE}",
+        json=data,
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    return resp.json()[0]
+
+
+def update_deal_version(version_id: str, patch: dict) -> dict:
+    """Patch a deal_versions row by id and return the updated row."""
+    url, key = _get_credentials()
+    resp = requests.patch(
+        f"{url}/rest/v1/{DEAL_VERSIONS_TABLE}",
+        json=patch,
+        params={"id": f"eq.{version_id}"},
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0] if rows else {}
+
+
+def fetch_deal_versions(deal_id: str) -> list[dict]:
+    """Return all versions for a deal, oldest first (so v0 Base is first)."""
+    url, key = _get_credentials()
+    resp = requests.get(
+        f"{url}/rest/v1/{DEAL_VERSIONS_TABLE}",
+        params={
+            "select":  DEAL_VERSION_SELECT,
+            "deal_id": f"eq.{deal_id}",
+            "order":   "created_at.asc",
+        },
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    return resp.json() or []
+
+
+def fetch_deal_version_by_id(version_id: str) -> dict | None:
+    """Return a single deal_versions row by id, or None."""
+    url, key = _get_credentials()
+    resp = requests.get(
+        f"{url}/rest/v1/{DEAL_VERSIONS_TABLE}",
+        params={
+            "select": DEAL_VERSION_SELECT,
+            "id":     f"eq.{version_id}",
+            "limit":  "1",
+        },
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+def fetch_deal_uuid_by_search_id(search_id: str) -> str | None:
+    """Resolve a deal's UUID from its human-readable search_id."""
+    url, key = _get_credentials()
+    resp = requests.get(
+        f"{url}/rest/v1/deals",
+        params={"select": "id", "search_id": f"eq.{search_id}", "limit": "1"},
+        headers=_headers(key, {"Prefer": "return=representation"}),
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    return rows[0]["id"] if rows else None
 
 
 def fetch_default_assumptions(api_key: str) -> dict:

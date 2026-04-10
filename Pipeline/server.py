@@ -414,7 +414,10 @@ def vite_assets(filename):
 
 
 # ââ Deals API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-from supabase_client import fetch_deals, get_download_url, update_deal_stage, fetch_deal_by_id
+from supabase_client import (
+    fetch_deals, get_download_url, update_deal_stage, fetch_deal_by_id,
+    fetch_deal_versions, fetch_deal_version_by_id, fetch_deal_uuid_by_search_id,
+)
 
 @app.route("/deals", methods=["GET"])
 def deals():
@@ -493,6 +496,129 @@ def patch_deal_stage(search_id):
         return jsonify({"ok": True, "stage": stage}), 200
     except Exception as e:
         log.error(f"Error updating deal stage: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Rerun Engine (Move 1) ────────────────────────────────────────────────────
+# Three routes for the deal-versioned rerun loop:
+#   GET    /deals/<search_id>/versions                  → list all versions
+#   POST   /deals/<search_id>/rerun                     → create new version by rerun
+#   GET    /deals/<search_id>/versions/<vid>/download   → signed URL to .xlsx
+
+@app.route("/deals/<search_id>/versions", methods=["GET", "OPTIONS"])
+def list_deal_versions(search_id):
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
+    if not api_key or not _get_user(api_key):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+    try:
+        deal_uuid = fetch_deal_uuid_by_search_id(search_id)
+        if not deal_uuid:
+            return jsonify({"ok": False, "error": "Deal not found"}), 404
+        versions = fetch_deal_versions(deal_uuid)
+        return jsonify({"ok": True, "versions": versions}), 200
+    except Exception as e:
+        log.error(f"Error listing versions for {search_id}: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/deals/<search_id>/rerun", methods=["POST", "OPTIONS"])
+def post_deal_rerun(search_id):
+    """
+    Trigger a rerun for a deal.
+
+    Body:
+      {
+        "label":              "Stress test 1",          # required, free text
+        "parent_version_id":  "<uuid or null>",         # null = use Base (v0)
+        "overrides": {
+          "acquisition_price":  12500000,
+          "ltv":                0.55,
+          "interest_rate":      0.072,
+          "exit_cap_rate":      0.065
+        }
+      }
+
+    Synchronous: blocks until LibreOffice recalc finishes (~3-5s for the
+    Multifamily template). Returns the new deal_versions row on success.
+    """
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
+    if not api_key or not _get_user(api_key):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True, silent=True) or {}
+    label             = (data.get("label") or "Untitled").strip()
+    parent_version_id = data.get("parent_version_id")
+    overrides         = data.get("overrides") or {}
+
+    if not isinstance(overrides, dict):
+        return jsonify({"ok": False, "error": "overrides must be an object"}), 400
+
+    try:
+        deal_uuid = fetch_deal_uuid_by_search_id(search_id)
+        if not deal_uuid:
+            return jsonify({"ok": False, "error": "Deal not found"}), 404
+
+        # Resolve parent: explicit version_id, or fall back to v0 (Base)
+        if parent_version_id:
+            parent = fetch_deal_version_by_id(parent_version_id)
+            if not parent or parent.get("deal_id") != deal_uuid:
+                return jsonify({"ok": False, "error": "parent_version_id not found for this deal"}), 400
+        else:
+            versions = fetch_deal_versions(deal_uuid)
+            base = next((v for v in versions if v.get("version_number") == 0), None)
+            if not base:
+                return jsonify({"ok": False, "error": "Deal has no Base version to rerun from"}), 400
+            parent = base
+
+        parent_workbook_path = parent.get("workbook_path")
+        if not parent_workbook_path:
+            return jsonify({"ok": False, "error": "Parent version has no workbook"}), 400
+
+        # Run the rerun (synchronous)
+        from rerun import run_rerun, RerunError
+        try:
+            new_version = run_rerun(
+                deal_id=deal_uuid,
+                search_id=search_id,
+                parent_workbook_path=parent_workbook_path,
+                overrides=overrides,
+                label=label,
+                parent_version_id=parent["id"],
+                created_by=api_key,
+            )
+        except (RerunError, Exception) as e:
+            log.error(f"Rerun failed for {search_id}: {e}", exc_info=True)
+            return jsonify({"ok": False, "error": f"Rerun failed: {e}"}), 500
+
+        return jsonify({"ok": True, "version": new_version}), 200
+
+    except Exception as e:
+        log.error(f"Rerun route error for {search_id}: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/deals/<search_id>/versions/<version_id>/download", methods=["GET", "OPTIONS"])
+def download_version_workbook(search_id, version_id):
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
+    if not api_key or not _get_user(api_key):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+    try:
+        version = fetch_deal_version_by_id(version_id)
+        if not version:
+            return jsonify({"ok": False, "error": "Version not found"}), 404
+        workbook_path = version.get("workbook_path")
+        if not workbook_path:
+            return jsonify({"ok": False, "error": "Version has no workbook"}), 404
+        signed_url = get_download_url(workbook_path)
+        return redirect(signed_url)
+    except Exception as e:
+        log.error(f"Download error for version {version_id}: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
