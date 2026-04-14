@@ -9,26 +9,31 @@
 # Image strategy:
 #   - python:3.11-slim base (small, well-supported)
 #   - apt: libreoffice-calc + libreoffice-core (headless, no GUI deps)
+#   - apt: tesseract-ocr + poppler-utils (OCR for scanned lease PDFs)
 #   - Node 20 for the Frontend build step (carried over from build.sh)
 #   - The same gunicorn command from the existing Procfile
 #
-# Build size: ~700 MB (libreoffice is ~400 MB of that). First build on
+# Build size: ~750 MB (libreoffice is ~400 MB of that). First build on
 # Render takes ~6-8 min; subsequent builds use Docker layer cache and are
 # closer to 1-2 min for code-only changes.
 
 FROM python:3.11-slim
 
 # ── System packages ──────────────────────────────────────────────────────────
-# libreoffice-calc      → headless recalc of .xlsx files (Move 1 Rerun Engine)
-# libreoffice-core      → required runtime libs
-# fonts-liberation      → Excel-default-equivalent fonts so layouts don't shift
-# curl, ca-certificates → for outbound HTTPS to Supabase
-# nodejs, npm           → React Frontend build
+# libreoffice-calc       → headless recalc of .xlsx files (Move 1 Rerun Engine)
+# libreoffice-core       → required runtime libs
+# fonts-liberation       → Excel-default-equivalent fonts so layouts don't shift
+# tesseract-ocr          → OCR engine for scanned PDF lease parsing
+# poppler-utils          → pdf2image needs pdfinfo/pdftoppm to rasterize pages
+# curl, ca-certificates  → for outbound HTTPS to Supabase
+# nodejs, npm            → React Frontend build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libreoffice-calc \
         libreoffice-core \
         fonts-liberation \
+        tesseract-ocr \
+        poppler-utils \
         curl \
         ca-certificates \
         gnupg \
@@ -39,6 +44,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Verify LibreOffice is on PATH
 RUN which soffice && soffice --version
+
+# Verify Tesseract is on PATH
+RUN which tesseract && tesseract --version
 
 # ── App ──────────────────────────────────────────────────────────────────────
 WORKDIR /app
