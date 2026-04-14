@@ -1,25 +1,26 @@
 """
-excel_writer.py — Ping Pipeline Excel Population
+excel_writer.py â Ping Pipeline Excel Population
 --------------------------------------------------
 Writes live RentCast comp data and subject-property inputs into the
 Multifamily Model Template.
 
 Three sheet targets:
-  Raw Comps    — every individual comp listing
-  Assumptions  — subject-property inputs + unit mix (drives all cash-flow formulas)
-  Inputs       — display-only unit-mix summary panel
+  Raw Comps    â every individual comp listing
+  Assumptions  â subject-property inputs + unit mix (drives all cash-flow formulas)
+  Inputs       â display-only unit-mix summary panel
 """
 
 from datetime import datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from helpers import shorten_address, parse_num
+from assumptions import DEFAULTS as _DEFAULTS
 
-# ── Shared styles ────────────────────────────────────────────────────────────────
+# ââ Shared styles ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 ALT_FILL = PatternFill("solid", fgColor="F8FAFC")
 BLUE_FONT = Font(name="Arial", size=9, color="0000FF")   # pipeline-written inputs
 
 
-# ── Raw Comps ────────────────────────────────────────────────────────────────────
+# ââ Raw Comps ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
     """
@@ -28,13 +29,13 @@ def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
     Rows 1-4 are untouched:
       Row 2 = sheet title
       Row 3 = subtitle / note
-      Row 4 = column headers (baked into the template — not rewritten)
+      Row 4 = column headers (baked into the template â not rewritten)
 
-    Critical column positions — Assumptions AVERAGEIFS hard-reference these:
-      Col I (9)  = price/rent    ← AVERAGEIFS range
-      Col J (10) = filter_beds   ← AVERAGEIFS criteria
-      Col K (11) = filter_baths  ← AVERAGEIFS criteria
-      Col L (12) = squareFootage ← AVERAGEIFS range (avg SF)
+    Critical column positions â Assumptions AVERAGEIFS hard-reference these:
+      Col I (9)  = price/rent    â AVERAGEIFS range
+      Col J (10) = filter_beds   â AVERAGEIFS criteria
+      Col K (11) = filter_baths  â AVERAGEIFS criteria
+      Col L (12) = squareFootage â AVERAGEIFS range (avg SF)
 
     Note: AVERAGEIFS formulas in Assumptions reference $I$4:$I$871
     (starting at the header row). The header text in row 4 is safely
@@ -71,10 +72,10 @@ def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
         ("Dist (m)",        9, _RIGHT),  # F 6
         ("Dist (km)",       9, _RIGHT),  # G 7
         ("Unit Type",      13, _LEFT),   # H 8
-        ("Rent / Mo ★",   12, _RIGHT),  # I 9  ← AVERAGEIFS range
-        ("Beds ★",         7, _CTR),    # J 10 ← AVERAGEIFS criteria
-        ("Baths ★",        8, _CTR),    # K 11 ← AVERAGEIFS criteria
-        ("Sq Ft ★",        9, _RIGHT),  # L 12 ← AVERAGEIFS range
+        ("Rent / Mo â",   12, _RIGHT),  # I 9  â AVERAGEIFS range
+        ("Beds â",         7, _CTR),    # J 10 â AVERAGEIFS criteria
+        ("Baths â",        8, _CTR),    # K 11 â AVERAGEIFS criteria
+        ("Sq Ft â",        9, _RIGHT),  # L 12 â AVERAGEIFS range
         ("Bedrooms",       10, _CTR),    # M 13
         ("Bathrooms",      10, _CTR),    # N 14
         ("Address",        34, _LEFT),   # O 15
@@ -146,7 +147,7 @@ def populate_raw_comps(ws, all_rows: list, search_meta: dict) -> None:
                 cl.fill = fill
 
 
-# ── Assumptions ───────────────────────────────────────────────────────────────
+# ââ Assumptions âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def populate_assumptions(ws, search_meta: dict, combos: list,
                          comp_summary: list,
@@ -167,7 +168,7 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
       C12 = Total Units
       B16:D20 = unit-type labels + beds + baths (drive AVERAGEIFS comp lookup)
 
-    Financial assumptions (NEW — previously left empty / hardcoded):
+    Financial assumptions (NEW â previously left empty / hardcoded):
       C22 = GPR (formula =I21, stays dynamic with unit mix)
       C25 = Vacancy rate
       C8  = Closing costs %
@@ -193,8 +194,8 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
     short = shorten_address(search_meta["address"])
     ws["C3"] = short;  ws["C3"].font = BLUE_FONT
 
-    search_id = search_meta.get("searchId", "—")
-    address   = search_meta.get("address", "—")
+    search_id = search_meta.get("searchId", "â")
+    address   = search_meta.get("address", "â")
     ws["C4"] = f"{search_id} | {address}";  ws["C4"].font = BLUE_FONT
 
     _price = parse_num(search_meta.get("price"))
@@ -248,51 +249,51 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
             ws.cell(row=r, column=4, value=None)
             ws.cell(row=r, column=5, value=None)
 
-    # ── NEW: Write GPR and all financial assumptions ─────────────────────────
-    # C22 = GPR — use formula so it stays dynamic with unit mix edits
+    # ââ NEW: Write GPR and all financial assumptions âââââââââââââââââââââââââ
+    # C22 = GPR â use formula so it stays dynamic with unit mix edits
     ws["C22"] = "=I21"
     ws["C22"].font = BLUE_FONT
 
-    # C25 = Vacancy (CRITICAL — was previously empty, broke entire Pro Forma)
-    ws["C25"] = assump.get("vacancy", 0.05)
+    # C25 = Vacancy (CRITICAL â was previously empty, broke entire Pro Forma)
+    ws["C25"] = assump.get("vacancy", _DEFAULTS["vacancy"])
     ws["C25"].font = BLUE_FONT
     ws["C25"].number_format = "0.00%"
 
     # Closing costs
-    ws["C8"] = assump.get("closing_pct", assump.get("closingPct", 0.02))
+    ws["C8"] = assump.get("closing_pct", assump.get("closingPct", _DEFAULTS["closingPct"]))
     ws["C8"].font = BLUE_FONT
     ws["C8"].number_format = "0.00%"
 
     # Other income per unit per month
-    ws["C26"] = assump.get("other_inc_mo", assump.get("otherIncMo", 75))
+    ws["C26"] = assump.get("other_inc_mo", assump.get("otherIncMo", _DEFAULTS["otherIncMo"]))
     ws["C26"].font = BLUE_FONT
     ws["C26"].number_format = "$#,##0"
 
     # Operating expenses
-    ws["C29"] = assump.get("opex_ratio", assump.get("opexRatio", 0.35))
+    ws["C29"] = assump.get("opex_ratio", assump.get("opexRatio", _DEFAULTS["opexRatio"]))
     ws["C29"].font = BLUE_FONT
     ws["C29"].number_format = "0.00%"
 
-    ws["C30"] = assump.get("opex_growth", 0.03)
+    ws["C30"] = assump.get("opex_growth", _DEFAULTS["opex_growth"])
     ws["C30"].font = BLUE_FONT
     ws["C30"].number_format = "0.00%"
 
     # Financing
-    ws["C34"] = assump.get("ltv", 0.70)
+    ws["C34"] = assump.get("ltv", _DEFAULTS["ltv"])
     ws["C34"].font = BLUE_FONT
     ws["C34"].number_format = "0.00%"
 
-    ws["C36"] = assump.get("int_rate", assump.get("intRate", 0.065))
+    ws["C36"] = assump.get("int_rate", assump.get("intRate", _DEFAULTS["intRate"]))
     ws["C36"].font = BLUE_FONT
     ws["C36"].number_format = "0.00%"
 
-    ws["C37"] = assump.get("io_period_mo", 24)
+    ws["C37"] = assump.get("io_period_mo", _DEFAULTS["io_period_mo"])
     ws["C37"].font = BLUE_FONT
 
-    ws["C38"] = assump.get("amort_years", 30)
+    ws["C38"] = assump.get("amort_years", _DEFAULTS["amort_years"])
     ws["C38"].font = BLUE_FONT
 
-    ws["C39"] = assump.get("loan_term_years", 10)
+    ws["C39"] = assump.get("loan_term_years", _DEFAULTS["loan_term_years"])
     ws["C39"].font = BLUE_FONT
 
     ws["C40"] = assump.get("orig_fee_pct", 0.01)
@@ -303,11 +304,11 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
     ws["C44"] = assump.get("hold_period_years", 5)
     ws["C44"].font = BLUE_FONT
 
-    ws["C45"] = assump.get("exit_cap_rate", 0.07)
+    ws["C45"] = assump.get("exit_cap_rate", _DEFAULTS["exit_cap_rate"])
     ws["C45"].font = BLUE_FONT
     ws["C45"].number_format = "0.00%"
 
-    ws["C46"] = assump.get("selling_costs_pct", 0.04)
+    ws["C46"] = assump.get("selling_costs_pct", _DEFAULTS["selling_costs_pct"])
     ws["C46"].font = BLUE_FONT
     ws["C46"].number_format = "0.00%"
 
@@ -325,7 +326,7 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
     ws["C51"].number_format = "0.00%"
 
     # Rent growth Years 1-5
-    ws["C55"] = assump.get("rent_growth_1", assump.get("rentGrowth1", 0.03))
+    ws["C55"] = assump.get("rent_growth_1", assump.get("rentGrowth1", _DEFAULTS["rentGrowth1"]))
     ws["C55"].font = BLUE_FONT
     ws["C55"].number_format = "0.00%"
 
@@ -345,7 +346,7 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
     ws["G55"].font = BLUE_FONT
     ws["G55"].number_format = "0.00%"
 
-    # ── Commercial Spaces (rows 64+) ────────────────────────────────────────
+    # ââ Commercial Spaces (rows 64+) ââââââââââââââââââââââââââââââââââââââââ
     if commercial_spaces:
         _NAV_BG = PatternFill("solid", fgColor="1E3A5F")
         _NAV_F  = Font(bold=True, color="FFFFFF", name="Arial", size=9)
@@ -358,7 +359,7 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
         D0   = 66  # first data row
 
         # Section header
-        c = ws.cell(row=SECT, column=2, value="⑩ COMMERCIAL SPACES ($/SF/Yr — NNN)")
+        c = ws.cell(row=SECT, column=2, value="â© COMMERCIAL SPACES ($/SF/Yr â NNN)")
         c.font = _NAV_F;  c.fill = _NAV_BG
 
         # Column headers
@@ -405,13 +406,13 @@ def populate_assumptions(ws, search_meta: dict, combos: list,
         c_gr.number_format = "$#,##0"
 
 
-# ── Inputs ───────────────────────────────────────────────────────────────────
+# ââ Inputs âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def populate_inputs(ws, search_meta: dict, combos: list,
                     comp_summary: list,
                     commercial_spaces: list = None) -> None:
     """
-    Write display data to the Inputs sheet (informational only — does not
+    Write display data to the Inputs sheet (informational only â does not
     drive Pro Forma formulas; those reference Assumptions).
 
     Row 5:  B = Property Name
@@ -470,11 +471,11 @@ def populate_inputs(ws, search_meta: dict, combos: list,
             ws.cell(row=r, column=2, value=beds).font   = BLUE_FONT
             ws.cell(row=r, column=3, value=ba).font      = BLUE_FONT
             ws.cell(row=r, column=4, value=n_units).font  = BLUE_FONT
-            ws.cell(row=r, column=5, value=cs.get("avg_rent")).font = BLUE_FONT  # Avg Rent/Mo
-            ws.cell(row=r, column=6, value=cs.get("avg_sqft")).font = BLUE_FONT  # Avg SF
+            ws.cell(row=r, column=5, value=cs.get("avg_sqft")).font = BLUE_FONT  # Avg SF  (col E)
+            ws.cell(row=r, column=6, value=cs.get("avg_rent")).font = BLUE_FONT  # Avg Rent/Mo (col F)
 
-            d = ws.cell(row=r, column=4).column_letter
-            f = ws.cell(row=r, column=5).column_letter  # avg_rent is now in col 5
+            d = ws.cell(row=r, column=4).column_letter   # # Units
+            f = ws.cell(row=r, column=6).column_letter   # Avg Rent/Mo
             g = ws.cell(row=r, column=7).column_letter
             ws.cell(row=r, column=7, value=f"={d}{r}*{f}{r}").font = Font(name="Arial", size=9)
             ws.cell(row=r, column=8, value=f"={g}{r}*12").font     = Font(name="Arial", size=9)
@@ -482,7 +483,7 @@ def populate_inputs(ws, search_meta: dict, combos: list,
             for col in range(1, 9):
                 ws.cell(row=r, column=col).value = None
 
-    # ── Commercial Leasing Section (rows 80+) ──────────────────────────────
+    # ââ Commercial Leasing Section (rows 80+) ââââââââââââââââââââââââââââââ
     if commercial_spaces:
         # Aggregate totals
         total_sf = 0; total_gross = 0.0
@@ -495,7 +496,7 @@ def populate_inputs(ws, search_meta: dict, combos: list,
             except (ValueError, TypeError):
                 pass
 
-        # ── Styles ──
+        # ââ Styles ââ
         _NAV_BG = PatternFill("solid", fgColor="1E3A5F")
         _NAV_F  = Font(bold=True, color="FFFFFF", name="Arial", size=9)
         _HDR_BG = PatternFill("solid", fgColor="F1F5F9")
@@ -509,7 +510,7 @@ def populate_inputs(ws, search_meta: dict, combos: list,
         R_TOT  = R_D0 + len(commercial_spaces)
 
         # Section header
-        c = ws.cell(row=R_SECT, column=1, value="⑩ COMMERCIAL SPACES")
+        c = ws.cell(row=R_SECT, column=1, value="â© COMMERCIAL SPACES")
         c.font = _NAV_F;  c.fill = _NAV_BG
 
         # Column headers
