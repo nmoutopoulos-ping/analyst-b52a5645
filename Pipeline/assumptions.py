@@ -26,28 +26,38 @@ from pathlib import Path
 # customised a particular value, the default below is used.
 
 DEFAULTS: dict = {
-    "ltv":          0.70,    # Loan-to-value ratio
-    "closingPct":   0.02,    # Acquisition closing costs as % of price
-    "vacancy":      0.07,    # Vacancy & credit loss as % of GPR
-    "otherIncMo":   75,      # Other income per unit per month ($)
-    "opexRatio":    0.35,    # Operating expenses as % of NEI
-    "intRate":      0.065,   # Annual interest rate (IO in Year 1)
-    "rentGrowth1":  0.03,    # Year-1 rent growth applied to GPR
+    "ltv":              0.70,    # Loan-to-value ratio
+    "closingPct":       0.02,    # Acquisition closing costs as % of price
+    "vacancy":          0.07,    # Vacancy & credit loss as % of GPR
+    "otherIncMo":       75,      # Other income per unit per month ($)
+    "opexRatio":        0.35,    # Operating expenses as % of NEI
+    "intRate":          0.065,   # Annual interest rate
+    "rentGrowth1":      0.03,    # Year-1 rent growth applied to GPR
+    "io_period_mo":     24,      # Interest-only period in months
+    "amort_years":      30,      # Amortization term in years
+    "loan_term_years":  10,      # Total loan term in years
+    "exit_cap_rate":    0.07,    # Exit / reversion cap rate
+    "opex_growth":      0.03,    # Annual OpEx growth rate
+    "selling_costs_pct": 0.04,   # Disposition selling costs
 }
 
 # Human-readable labels for the CRM Settings UI
 LABELS: dict = {
-    "ltv":         "Loan-to-Value (LTV)",
-    "closingPct":  "Closing Costs",
-    "vacancy":     "Vacancy Rate",
-    "otherIncMo":  "Other Income / Unit / Month ($)",
-    "opexRatio":   "Operating Expense Ratio",
-    "intRate":     "Interest Rate",
-    "rentGrowth1": "Year-1 Rent Growth",
+    "ltv":              "Loan-to-Value (LTV)",
+    "closingPct":       "Closing Costs",
+    "vacancy":          "Vacancy Rate",
+    "otherIncMo":       "Other Income / Unit / Month ($)",
+    "opexRatio":        "Operating Expense Ratio",
+    "intRate":          "Interest Rate",
+    "rentGrowth1":      "Year-1 Rent Growth",
+    "exit_cap_rate":    "Exit Cap Rate",
+    "opex_growth":      "OpEx Growth Rate",
+    "selling_costs_pct": "Selling Costs",
 }
 
 # Keys that are stored/displayed as percentages (multiply by 100 for display)
-PCT_KEYS = {"ltv", "closingPct", "vacancy", "opexRatio", "intRate", "rentGrowth1"}
+PCT_KEYS = {"ltv", "closingPct", "vacancy", "opexRatio", "intRate", "rentGrowth1",
+            "exit_cap_rate", "opex_growth", "selling_costs_pct"}
 
 
 # ── Storage ────────────────────────────────────────────────────────────────────
@@ -184,19 +194,29 @@ def _irr(cash_flows: list, max_iter: int = 200, tol: float = 1e-7) -> "float | N
     return None
 
 
+def _pmt(rate: float, nper: int, pv: float) -> float:
+    """Monthly payment for a fully amortizing loan (matches Excel PMT)."""
+    if rate == 0:
+        return pv / nper if nper else 0
+    return pv * (rate * (1 + rate) ** nper) / ((1 + rate) ** nper - 1)
+
+
 def compute_returns(
     total_annual: float,
     total_units: int,
     price: float,
     cost: float,
     a: "dict | None" = None,
-    hold_years: int = 5,
+    hold_years: int | None = None,
 ) -> dict:
     """
     Compute levered investment returns over a hold period.
 
-    Uses Year-0 NOI (matching Excel) as the base, then grows NOI by
-    rent_growth for Years 1-N.
+    *** ALIGNED WITH EXCEL PRO FORMA ***
+    - Uses explicit exit_cap_rate (not entry cap) for reversion
+    - Transitions from IO to amortizing debt service after io_period_mo
+    - Tracks remaining loan balance for accurate exit reversion
+    - Applies selling_costs_pct to exit value
 
     Arguments:
       total_annual  - gross annual revenue (residential + commercial)
@@ -204,7 +224,7 @@ def compute_returns(
       price         - acquisition price
       cost          - improvements / capex budget
       a             - assumptions dict (from load()); falls back to DEFAULTS
-      hold_years    - investment hold period in years (default 5)
+      hold_years    - investment hold period (default from assumptions or 5)
 
     Returns a dict with:
       noi            - Year-0 Net Operating Income ($)
@@ -220,12 +240,21 @@ def compute_returns(
     pf = compute_proforma(total_annual, total_units, price, cost, a)
 
     _a = {**DEFAULTS, **(a or {})}
-    rent_growth = _a["rentGrowth1"]
+    rent_growth     = _a["rentGrowth1"]
+    io_period_mo    = int(_a.get("io_period_mo", 24))
+    amort_years     = int(_a.get("amort_years", 30))
+    int_rate        = float(_a["intRate"])
+    exit_cap        = float(_a.get("exit_cap_rate", 0.07))
+    selling_pct     = float(_a.get("selling_costs_pct", 0.04))
+    opex_growth     = float(_a.get("opex_growth", 0.03))
+
+    if hold_years is None:
+        hold_years = int(_a.get("hold_period_years", 5))
 
     noi0   = pf["noi0"]
     equity = pf["equity"]
     loan   = pf["loan"]
-    ds     = pf["ds0"]   # IO debt service (constant throughout hold)
+    ds_io  = loan * int_rate   # annual IO debt service
 
     if not equity or equity <= 0:
         return {
@@ -236,20 +265,57 @@ def compute_returns(
 
     # Entry cap rate (NOI / purchase price)
     entry_cap = noi0 / price if price else 0
-    exit_cap  = entry_cap   # assume exit at same cap rate as entry
 
-    # Annual cash flows: IO loan, sell at end of hold
+    # Monthly amortizing payment (used after IO period)
+    monthly_rate = int_rate / 12
+    num_payments = amort_years * 12
+    monthly_pmt  = _pmt(monthly_rate, num_payments, loan)
+    annual_amort_ds = monthly_pmt * 12
+
+    # ── Build annual cash flows matching Excel Pro Forma ────────────────
+    # Track loan balance month-by-month for accurate exit reversion
+    loan_balance = loan
     cash_flows = [-equity]  # Year 0: equity out
 
-    noi_t = noi0
+    # Year-0 pro forma components (for growing individually)
+    gpr_t   = pf["gpr0"]
+    other_t = pf["other_inc"]
+    opex_t  = pf["opex0"]
+    vacancy = float(_a["vacancy"])
+
     for t in range(1, hold_years + 1):
-        # Apply rent growth starting from Year 1
-        noi_t *= 1 + rent_growth
-        ncf_t = noi_t - ds
+        # Grow revenue and expenses (matching Excel Pro Forma columns)
+        gpr_t   *= 1 + rent_growth
+        other_t *= 1 + rent_growth
+        egi_t    = gpr_t + other_t
+        nei_t    = egi_t * (1 - vacancy)
+        opex_t  *= 1 + opex_growth
+        noi_t    = nei_t - opex_t
+
+        # ── Debt service: IO vs amortizing per month ──
+        # For each month in this year, determine IO or amort
+        annual_ds = 0.0
+        for m in range(12):
+            month_num = (t - 1) * 12 + m + 1  # 1-indexed absolute month
+            if month_num <= io_period_mo:
+                # Interest-only
+                monthly_interest = loan_balance * monthly_rate
+                annual_ds += monthly_interest
+                # No principal reduction during IO
+            else:
+                # Amortizing
+                monthly_interest = loan_balance * monthly_rate
+                principal_pmt    = monthly_pmt - monthly_interest
+                annual_ds       += monthly_pmt
+                loan_balance    -= principal_pmt
+
+        ncf_t = noi_t - annual_ds
 
         if t == hold_years:
-            exit_value = (noi_t / exit_cap) if exit_cap else 0
-            reversion  = exit_value - loan  # net proceeds after paying off loan
+            # Exit: sell at explicit exit cap, minus remaining loan, minus selling costs
+            exit_value    = (noi_t / exit_cap) if exit_cap else 0
+            selling_costs = exit_value * selling_pct
+            reversion     = exit_value - selling_costs - loan_balance
             cash_flows.append(ncf_t + reversion)
         else:
             cash_flows.append(ncf_t)
@@ -267,5 +333,5 @@ def compute_returns(
         "loan_amount":       round(loan, 0),
         "down_payment":      round(equity, 0),
         "monthly_cash_flow": round(pf["ncf0"] / 12, 0),
-        "dscr":              round(noi0 / ds, 2) if ds else None,
+        "dscr":              round(noi0 / ds_io, 2) if ds_io else None,
     }
