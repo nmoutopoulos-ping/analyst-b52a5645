@@ -3,6 +3,10 @@ lease_parser.py — Parse lease documents and extract structured data.
 
 Accepts file bytes + filename, detects file type, extracts text, and sends to OpenAI
 to extract 24 lease-related fields as JSON.
+
+Text-extraction strategy for PDFs (in order):
+  1. pymupdf (fitz) — fast native text extraction; handles most modern PDFs.
+  2. pytesseract OCR — for scanned / image-only PDFs where (1) yields < 100 chars.
 """
 
 import io
@@ -40,39 +44,100 @@ LEASE_FIELDS = [
     "termination_option",
     "termination_notice_months",
     "guarantor_name",
-    "confidently_extracted",
+    "commencement_conditions",
     "notes",
 ]
 
 LEASE_EXTRACTION_PROMPT = (
-    "You are a commercial and residential lease abstraction expert. "
-    "Extract the following fields from the provided lease document and return them as a single JSON object. "
-    "Use null for any field you cannot determine from the text. "
-    "For list fields, return arrays of strings. "
-    "For date fields use YYYY-MM-DD format. "
-    "For currency fields return numbers without formatting. "
-    'The "confidently_extracted" field should be an array of field names you are highly confident about. '
+    "You are a commercial real estate lease analyst. "
+    "Extract the following fields from the provided lease document text. "
+    'Return a JSON object with these exact field names as keys. If a field is not found in the text, use "Not found" as the value. '
+    'Include a "confidence" field with an array of field names you are highly confident about. '
     'The "notes" field should contain any important caveats or ambiguities.\n\n'
     "Fields to extract:\n"
     + "\n".join(f"- {f}" for f in LEASE_FIELDS)
 )
 
+# ---------------------------------------------------------------------------
+# Minimum characters threshold — if native extraction yields fewer chars
+# than this, fall back to OCR (the PDF is likely scanned / image-only).
+# ---------------------------------------------------------------------------
+MIN_TEXT_CHARS = 100
+
+
+# ---------------------------------------------------------------------------
+# PDF text extraction
+# ---------------------------------------------------------------------------
 
 def _extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract text from a PDF file using PyPDF2."""
-    try:
-        from PyPDF2 import PdfReader
+    """
+    Extract text from a PDF.
 
-        pdf_file = io.BytesIO(file_bytes)
-        reader = PdfReader(pdf_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
+    Strategy:
+      1. Try pymupdf (fitz) — fast, handles most PDFs well.
+      2. If that yields < MIN_TEXT_CHARS, fall back to OCR via pytesseract.
+    """
+    text = _extract_text_pymupdf(file_bytes)
+
+    if len(text.strip()) >= MIN_TEXT_CHARS:
         return text.strip()
-    except Exception as e:
-        log.error(f"Error extracting PDF text: {e}")
-        raise
 
+    # Native extraction got very little — likely a scanned PDF.  Try OCR.
+    log.info("Native PDF text extraction yielded only %d chars — falling back to OCR", len(text.strip()))
+    ocr_text = _extract_text_ocr(file_bytes)
+    if ocr_text and len(ocr_text.strip()) > len(text.strip()):
+        return ocr_text.strip()
+
+    # Return whatever we got (even if short).
+    return text.strip()
+
+
+def _extract_text_pymupdf(file_bytes: bytes) -> str:
+    """Extract text using pymupdf (fitz)."""
+    try:
+        import fitz  # pymupdf
+
+        pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
+        text = ""
+        for page in pdf_doc:
+            text += page.get_text() + "\n"
+        pdf_doc.close()
+        return text
+    except Exception as e:
+        log.error(f"pymupdf text extraction failed: {e}")
+        # Fall through — caller will try OCR
+        return ""
+
+
+def _extract_text_ocr(file_bytes: bytes) -> str:
+    """
+    OCR a PDF using pdf2image + pytesseract.
+
+    Requires system packages: tesseract-ocr, poppler-utils
+    """
+    try:
+        from pdf2image import convert_from_bytes
+        import pytesseract
+
+        log.info("Running OCR on PDF (%d bytes)...", len(file_bytes))
+        images = convert_from_bytes(file_bytes, dpi=300)
+        text = ""
+        for i, img in enumerate(images):
+            page_text = pytesseract.image_to_string(img)
+            text += page_text + "\n"
+            log.info("OCR page %d: extracted %d chars", i + 1, len(page_text))
+        return text
+    except ImportError as e:
+        log.warning("OCR dependencies not available (%s) — skipping OCR", e)
+        return ""
+    except Exception as e:
+        log.error(f"OCR extraction failed: {e}")
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Other file-type extractors (unchanged)
+# ---------------------------------------------------------------------------
 
 def _extract_text_from_csv(file_bytes: bytes) -> str:
     """Extract text from a CSV file."""
@@ -98,7 +163,7 @@ def _extract_text_from_xlsx(file_bytes: bytes) -> str:
             for row in sheet.iter_rows(values_only=True):
                 for cell in row:
                     if cell is not None:
-                        text += str(cell) + " "
+                        text += str(cell) + "\t"
                 text += "\n"
         return text.strip()
     except Exception as e:
@@ -116,6 +181,10 @@ def _extract_text_from_txt(file_bytes: bytes) -> str:
         raise
 
 
+# ---------------------------------------------------------------------------
+# Router
+# ---------------------------------------------------------------------------
+
 def _extract_text(file_bytes: bytes, filename: str) -> str:
     """Detect file type and extract text accordingly."""
     filename_lower = filename.lower()
@@ -131,6 +200,10 @@ def _extract_text(file_bytes: bytes, filename: str) -> str:
     else:
         raise ValueError(f"Unsupported file type: {filename}")
 
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
 
 def parse_lease(file_bytes: bytes, filename: str) -> dict:
     """
@@ -155,6 +228,12 @@ def parse_lease(file_bytes: bytes, filename: str) -> dict:
     log.info(f"Extracting text from {filename}...")
     extracted_text = _extract_text(file_bytes, filename)
     log.info(f"Extracted {len(extracted_text)} characters from {filename}")
+
+    if len(extracted_text.strip()) < 20:
+        raise ValueError(
+            f"Could not extract meaningful text from {filename}. "
+            "The file may be empty, corrupted, or in an unsupported format."
+        )
 
     # Initialize OpenAI client
     api_key = os.environ.get("OPENAI_API_KEY")
