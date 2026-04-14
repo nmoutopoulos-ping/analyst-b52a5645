@@ -35,7 +35,12 @@ from fetcher import rentcast_comps, build_comp_rows
 from excel_writer import populate_raw_comps, populate_assumptions, populate_inputs
 from docx_writer import generate_summary_docx
 from emailer import generate_summary
-from supabase_client import upload_deal_file, insert_deal
+from supabase_client import (
+    upload_deal_file,
+    insert_deal,
+    insert_deal_version,
+    fetch_deal_uuid_by_search_id,
+)
 from assumptions import compute_returns
 
 
@@ -206,6 +211,31 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
         "assumptions_snapshot": assump,
     }
     insert_deal(deal_row)
+
+    # 6b. Create the Base v0 row in deal_versions so the Rerun UI has a parent
+    #     to diff against (and so metric cards have something to render). Without
+    #     this, the Versions list is empty for every new deal and /deals/:id
+    #     falls back to legacy deal.results.
+    try:
+        deal_uuid = fetch_deal_uuid_by_search_id(search_id)
+        if deal_uuid:
+            insert_deal_version({
+                "deal_id":              deal_uuid,
+                "parent_version_id":    None,
+                "label":                "Base",
+                "version_number":       0,
+                "workbook_path":        excel_storage_path,
+                "assumption_overrides": {},
+                "results":              deal_results,
+                "status":               "complete",
+                "created_by":           search_meta.get("email") or None,
+            })
+            print(f"    Base v0 version row created for {search_id}")
+        else:
+            print(f"  [WARN] Could not resolve deal UUID for {search_id}; "
+                  f"skipping Base v0 row")
+    except Exception as _e:
+        print(f"  [WARN] Could not insert Base v0 version row: {_e}")
 
     # 7. Mark done
     processed = load_processed()
