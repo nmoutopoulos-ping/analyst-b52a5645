@@ -1,22 +1,25 @@
 """
-main.py â Ping Pipeline Entry Point
+main.py — Ping Pipeline Entry Point
 --------------------------------------
 Orchestrates the full underwriting pipeline:
 
   1. Accept search data directly from payload (no Google Sheets needed)
   2. Call RentCast API for rental comps per unit-mix combo (parallel)
   3. Populate Excel model (Raw Comps, Assumptions, Inputs)
+  3b. Recalculate Excel via LibreOffice headless, read back results
   4. Generate Word summary (executive + market analysis + comp listings)
   5. Upload files to Supabase Storage, insert deal row to database
   6. Mark search processed locally
 
 Entry points:
-  run_pipeline_from_payload(payload) â called by server.py on POST /trigger
-  run_pipeline()                     â legacy sheet-based runner (local dev only)
+  run_pipeline_from_payload(payload) ← called by server.py on POST /trigger
+  run_pipeline()                     ← legacy sheet-based runner (local dev only)
 """
 
 import json
+import os
 import shutil
+import subprocess
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -41,10 +44,113 @@ from supabase_client import (
     insert_deal_version,
     fetch_deal_uuid_by_search_id,
 )
-from assumptions import compute_returns
+from assumptions import compute_returns, DEFAULTS as ASSUMPTION_DEFAULTS
 
 
-# ââ Shared pipeline core ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ── Excel recalc + readback ──────────────────────────────────────────────────
+
+def _recalc_excel(filepath: Path) -> None:
+    """Recalculate all formulas in an Excel file using LibreOffice headless."""
+    result = subprocess.run(
+        ["libreoffice", "--headless", "--calc", "--norestore",
+         "--convert-to", "xlsx", "--outdir", str(filepath.parent), str(filepath)],
+        capture_output=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"LibreOffice recalc failed (rc={result.returncode}): "
+            f"{result.stderr.decode(errors='replace')}"
+        )
+
+
+def _safe_num(val, decimals=None):
+    """Convert an Excel cell value to a Python number, or None."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        if val.strip().lower() in ("n/a", "", "-", "--"):
+            return None
+        try:
+            val = float(val)
+        except ValueError:
+            return None
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return None
+    if decimals is not None:
+        val = round(val, decimals)
+    return val
+
+
+def _read_excel_results(filepath: Path, assump: dict) -> "dict | None":
+    """
+    Read the levered return summary from a recalculated Excel workbook.
+
+    Reads from the Returns sheet (preferred, stable aliases) with Pro Forma
+    fallback for per-year KPIs. Cell addresses per Multifamily-Results-Contract v1.1.
+    """
+    try:
+        wb = load_workbook(filepath, data_only=True)
+    except Exception as e:
+        print(f"  [WARN] Could not open recalculated workbook: {e}")
+        return None
+
+    # Returns sheet — Levered Return Summary (rows 7-12)
+    ret = wb["Returns"] if "Returns" in wb.sheetnames else None
+    pf  = wb["Pro Forma"] if "Pro Forma" in wb.sheetnames else None
+    asm = wb["Assumptions"] if "Assumptions" in wb.sheetnames else None
+
+    if not ret and not pf:
+        print("  [WARN] Neither Returns nor Pro Forma sheet found in workbook")
+        return None
+
+    # Prefer Returns sheet (clean aliases), fall back to Pro Forma
+    levered_irr   = _safe_num(ret["C7"].value, 4)   if ret else _safe_num(pf["C57"].value, 4)
+    moic          = _safe_num(ret["C8"].value, 3)    if ret else _safe_num(pf["C58"].value, 3)
+    avg_coc       = _safe_num(ret["C9"].value, 4)    if ret else _safe_num(pf["C59"].value, 4)
+    total_equity  = _safe_num(ret["C10"].value, 0)   if ret else _safe_num(pf["C50"].value, 0)
+    total_profit  = _safe_num(ret["C11"].value, 0)   if ret else _safe_num(pf["C60"].value, 0)
+    lp_moic       = _safe_num(ret["C12"].value, 3)   if ret else _safe_num(pf["C80"].value, 3)
+
+    # Pro Forma headline KPIs (always from Pro Forma sheet)
+    noi           = _safe_num(pf["D21"].value, 0)  if pf else None
+    dscr          = _safe_num(pf["D32"].value, 2)  if pf else None
+    coc_year1     = _safe_num(pf["D33"].value, 4)  if pf else None
+    cap_rate      = _safe_num(pf["D34"].value, 4)  if pf else None
+    cfbt          = _safe_num(pf["D28"].value, 0)  if pf else None
+
+    # Loan & equity from Assumptions sheet
+    loan_amount   = _safe_num(asm["C35"].value, 0) if asm else None
+    equity_req    = _safe_num(asm["C58"].value, 0) if asm else None
+
+    monthly_cf = round(cfbt / 12) if cfbt is not None else None
+
+    # Resolve exit_cap_rate from assumptions (so it's always persisted)
+    exit_cap = assump.get("exit_cap_rate", ASSUMPTION_DEFAULTS.get("exit_cap_rate", 0.07))
+
+    return {
+        "levered_irr":        levered_irr,
+        "moic":               moic,
+        "avg_coc":            avg_coc,
+        "coc_year1":          coc_year1,
+        "noi":                noi,
+        "cap_rate":           cap_rate,
+        "dscr":               dscr,
+        "total_equity":       total_equity or equity_req,
+        "total_profit":       total_profit,
+        "lp_moic":            lp_moic,
+        "loan_amount":        loan_amount,
+        "down_payment":       equity_req,
+        "monthly_cash_flow":  monthly_cf,
+        "exit_cap_rate":      exit_cap,
+        # Legacy keys (kept for backward compatibility with existing frontend)
+        "irr":                levered_irr,
+        "coc":                avg_coc,
+    }
+
+
+# ── Shared pipeline core ────────────────────────────────────────────────────
 
 def _run_search(search_id: str, search_meta: dict, combos: list,
                 commercial_spaces: list, assump: dict | None = None) -> None:
@@ -73,7 +179,7 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
     with ThreadPoolExecutor(max_workers=max(len(combos), 1)) as ex:
         for combo, rows in [f.result() for f in as_completed(
                 {ex.submit(_fetch, c): c for c in combos})]:
-            print(f"    â {combo['type']} {combo['beds']}bd/{combo['baths']}ba: {len(rows)} comps")
+            print(f"    → {combo['type']} {combo['beds']}bd/{combo['baths']}ba: {len(rows)} comps")
             all_comp_rows.extend(rows)
 
     all_comp_rows.sort(key=lambda r: (float(r["filter_beds"]), float(r["filter_baths"])))
@@ -107,38 +213,11 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
             })
     comp_summary.sort(key=lambda s: (float(s["beds"]), float(s["baths"])))
 
-    # Compute financial returns for the deal card display
-    try:
-        _price_num = float(search_meta.get("price") or 0)
-        _cost_num  = float(search_meta.get("cost") or 0)
-        _total_units_num = int(float(search_meta.get("totalUnits") or 0))
-
-        _res_annual = sum(
-            float(s.get("avg_rent") or 0) * int(float(s.get("units") or 0)) * 12
-            for s in comp_summary
-            if s.get("avg_rent") and s.get("units")
-        )
-        _com_annual = sum(
-            float(s.get("sqft") or 0) * float(s.get("rentPerSF") or 0)
-            for s in commercial_spaces
-            if s.get("sqft") and s.get("rentPerSF")
-        )
-        _total_annual = _res_annual + _com_annual
-
-        deal_results = (
-            compute_returns(_total_annual, _total_units_num, _price_num, _cost_num, assump)
-            if (_price_num and _total_annual and _total_units_num)
-            else None
-        )
-    except Exception as _e:
-        print(f"  [WARN] Could not compute deal returns: {_e}")
-        deal_results = None
-
     # 3. Populate Excel model
     print(f"  [3] Populating Excel model...")
     short_name = shorten_address(search_meta["address"])
     safe_addr  = short_name.replace("/", "-").replace(":", "")[:60]
-    job_dir    = OUTPUT_DIR / f"{search_id} â {safe_addr} â {search_meta['email']}"
+    job_dir    = OUTPUT_DIR / f"{search_id} — {safe_addr} — {search_meta['email']}"
     job_dir.mkdir(parents=True, exist_ok=True)
 
     output_fn = job_dir / f"Ping_{search_id}_Model.xlsx"
@@ -148,18 +227,64 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
 
     populate_raw_comps(wb["Raw Comps"], all_comp_rows, search_meta)
 
-    # ââ CHANGED: pass assump so assumptions are written to Excel ââ
+    # ── CHANGED: pass assump so assumptions are written to Excel ──
     populate_assumptions(wb["Assumptions"], search_meta, combos,
                          comp_summary, commercial_spaces, assump=assump)
 
     populate_inputs(wb["Inputs"], search_meta, combos, comp_summary,
                     commercial_spaces)
 
-    # ââ CHANGED: hide Inputs sheet (legacy, nothing references it) ââ
+    # ── CHANGED: hide Inputs sheet (legacy, nothing references it) ──
     wb["Inputs"].sheet_state = "hidden"
 
     wb.save(output_fn)
     print(f"    Excel: {output_fn.name}")
+
+    # 3b. Recalculate Excel formulas via LibreOffice, then read back results.
+    #     This makes the Excel the single source of truth for all deal metrics.
+    #     The dashboard will now show the same numbers as the downloaded workbook.
+    deal_results = None
+    try:
+        print(f"  [3b] Recalculating Excel via LibreOffice...")
+        _recalc_excel(output_fn)
+        print(f"    Recalc complete.")
+
+        deal_results = _read_excel_results(output_fn, assump)
+        if deal_results:
+            print(f"    Read back: IRR={deal_results.get('levered_irr')}, "
+                  f"MOIC={deal_results.get('moic')}, "
+                  f"Avg CoC={deal_results.get('avg_coc')}, "
+                  f"NOI={deal_results.get('noi')}")
+        else:
+            print(f"  [WARN] Excel readback returned no results")
+    except Exception as _e:
+        print(f"  [WARN] LibreOffice recalc/readback failed: {_e}")
+        print(f"         Falling back to Python compute_returns()...")
+        # Fallback: use Python calculation if LibreOffice is unavailable
+        try:
+            _price_num = float(search_meta.get("price") or 0)
+            _cost_num  = float(search_meta.get("cost") or 0)
+            _total_units_num = int(float(search_meta.get("totalUnits") or 0))
+            _res_annual = sum(
+                float(s.get("avg_rent") or 0) * int(float(s.get("units") or 0)) * 12
+                for s in comp_summary
+                if s.get("avg_rent") and s.get("units")
+            )
+            _com_annual = sum(
+                float(s.get("sqft") or 0) * float(s.get("rentPerSF") or 0)
+                for s in commercial_spaces
+                if s.get("sqft") and s.get("rentPerSF")
+            )
+            _total_annual = _res_annual + _com_annual
+            deal_results = (
+                compute_returns(_total_annual, _total_units_num,
+                                _price_num, _cost_num, assump)
+                if (_price_num and _total_annual and _total_units_num)
+                else None
+            )
+        except Exception as _e2:
+            print(f"  [WARN] Python fallback also failed: {_e2}")
+            deal_results = None
 
     # 4. Generate Word summary
     print(f"  [4] Generating Word summary...")
@@ -207,8 +332,9 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
         "status":       "complete",
         "image_url":    search_meta.get("image_url"),
 
-        # ââ CHANGED: save the full assumptions used for this deal ââ
-        "assumptions_snapshot": assump,
+        # ── CHANGED: save the FULL resolved assumptions (defaults + overrides)
+        #    so every key is always present — no more NULL exit_cap_rate.
+        "assumptions_snapshot": {**ASSUMPTION_DEFAULTS, **assump},
     }
     insert_deal(deal_row)
 
@@ -241,10 +367,10 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
     processed = load_processed()
     processed.add(search_id)
     save_processed(processed)
-    print(f"  \u2705 {search_id} complete.")
+    print(f"  ✅ {search_id} complete.")
 
 
-# ââ Primary entry point (called by server.py) âââââââââââââââââââââââââââââââââ
+# ── Primary entry point (called by server.py) ───────────────────────────────
 
 def run_pipeline_from_payload(payload: dict) -> None:
     """
@@ -254,7 +380,7 @@ def run_pipeline_from_payload(payload: dict) -> None:
           minComps, maxComps, status, combos, commercial
     """
     print(f"\n{'='*60}")
-    print(f"  Ping Pipeline â {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Ping Pipeline — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
 
     search_id = payload.get("searchId",
@@ -292,7 +418,7 @@ def run_pipeline_from_payload(payload: dict) -> None:
         _run_search(search_id, search_meta, combos, commercial_spaces,
                     assump=assump)
     except Exception as e:
-        print(f"  \u274c Error in {search_id}: {e}")
+        print(f"  ❌ Error in {search_id}: {e}")
         traceback.print_exc()
         raise
 
@@ -301,15 +427,15 @@ def run_pipeline_from_payload(payload: dict) -> None:
     print(f"{'='*60}\n")
 
 
-# ââ Legacy entry point (local dev / sheet-based) ââââââââââââââââââââââââââââââ
+# ── Legacy entry point (local dev / sheet-based) ────────────────────────────
 
 def run_pipeline() -> None:
-    """Legacy runner â reads NEW rows from Google Sheets. Local dev only."""
+    """Legacy runner — reads NEW rows from Google Sheets. Local dev only."""
     from collections import defaultdict
     from fetcher import fetch_new_searches, gas_update_status
 
     print(f"\n{'='*60}")
-    print(f"  Ping Pipeline (sheet mode) â {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Ping Pipeline (sheet mode) — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
 
     print("\n[1] Fetching NEW searches from Google Sheets...")
@@ -361,7 +487,7 @@ def run_pipeline() -> None:
             _run_search(search_id, search_meta, combos, commercial_spaces)
             gas_update_status(search_id, "DONE")
         except Exception as e:
-            print(f"  \u274c {search_id}: {e}")
+            print(f"  ❌ {search_id}: {e}")
             traceback.print_exc()
             gas_update_status(search_id, "ERROR")
 
