@@ -1,5 +1,60 @@
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Document Parser (multi-type: lease, OM, PSA)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/parse-document", methods=["POST"])
+def parse_document_endpoint():
+    user, api_key = _get_authenticated_user()
+    if not user:
+        return jsonify({"error": "Unauthorized. Use X-Api-Key header or Authorization: Bearer <jwt>"}), 401
+
+    document_type = request.form.get("document_type", "").strip().lower()
+    if document_type not in SUPPORTED_DOC_TYPES:
+        return jsonify({
+            "error": f"Missing or invalid 'document_type'. Must be one of: {', '.join(SUPPORTED_DOC_TYPES)}"
+        }), 400
+
+    if "file" not in request.files:
+        return jsonify({"error": "Missing 'file' field in multipart form data"}), 400
+
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    filename = file.filename
+    file_ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if file_ext not in ALLOWED_EXTENSIONS:
+        return jsonify({
+            "error": f"Unsupported file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        }), 400
+
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({
+            "error": f"File too large. Maximum size: {MAX_FILE_SIZE / 1024 / 1024:.0f} MB"
+        }), 413
+
+    try:
+        log.info(f"Parsing {document_type} file: {filename} (size: {len(file_bytes)} bytes)")
+        result = parse_document(file_bytes, filename, document_type=document_type)
+        log.info(f"Document parsing successful for {filename} (type: {document_type})")
+        return jsonify({
+            "ok": True,
+            "document_type": result["document_type"],
+            "parsed": result["parsed"],
+            "usage": result["usage"]
+        }), 200
+    except ValueError as e:
+        log.error(f"Document parsing validation error: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        log.error(f"Document parsing error: {e}", exc_info=True)
+        return jsonify({"error": "Failed to parse document. See server logs for details."}), 500
+
+
 """
-server.py â Ping Pipeline Trigger Server
+server.py Ã¢ÂÂ Ping Pipeline Trigger Server
 -----------------------------------------
 Accepts a JSON POST from the Chrome extension, validates the user,
 generates a searchId, and runs the full underwriting pipeline in a
@@ -8,9 +63,9 @@ background thread. No Google Sheets or GAS dependency.
 POST /trigger
   Body: { api_key, address, lat, lng, price, cost, sqft,
           radius, minComps, maxComps, status, combos, commercial }
-  â { ok, searchId, status }   or   { ok: false, error }
+  Ã¢ÂÂ { ok, searchId, status }   or   { ok: false, error }
 
-GET /health â { ok, status: "idle" | "busy" }
+GET /health Ã¢ÂÂ { ok, status: "idle" | "busy" }
 
 Local usage:
     python3 server.py
@@ -41,10 +96,10 @@ from flask import Flask, jsonify, make_response, redirect, request, send_file, s
 sys.path.insert(0, __file__.rsplit("/", 1)[0])  # ensure Pipeline dir is on path
 from main import run_pipeline_from_payload
 import assumptions
-from lease_parser import parse_lease
+from document_parser import parse_lease, parse_document, SUPPORTED_DOC_TYPES
 from supabase_client import fetch_users_dict, insert_user, delete_user, fetch_user_by_email, update_extension_password, fetch_default_assumptions
 
-# ââ User registry (loaded from Supabase at startup) âââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ User registry (loaded from Supabase at startup) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 # In-memory dict for fast per-request auth lookups.
 # All writes go to Supabase so changes survive redeploys.
 
@@ -53,7 +108,7 @@ def _load_users() -> dict:
     try:
         return fetch_users_dict()
     except Exception as e:
-        print(f"[WARN] Could not load users from Supabase: {e} â falling back to users.json", file=sys.stderr)
+        print(f"[WARN] Could not load users from Supabase: {e} Ã¢ÂÂ falling back to users.json", file=sys.stderr)
         try:
             import json as _json
             _f = Path(__file__).parent / "users.json"
@@ -73,7 +128,7 @@ def _refresh_users() -> dict | None:
     global USERS
     try:
         USERS = fetch_users_dict()
-        log.info(f"USERS cache refreshed â {len(USERS)} user(s)")
+        log.info(f"USERS cache refreshed Ã¢ÂÂ {len(USERS)} user(s)")
         return USERS
     except Exception as e:
         log.error(f"Failed to refresh USERS: {e}")
@@ -84,7 +139,7 @@ def _get_user(api_key: str) -> dict | None:
     user = USERS.get(api_key)
     if user:
         return user
-    # Key not in cache â maybe a new user was added. Refresh once.
+    # Key not in cache Ã¢ÂÂ maybe a new user was added. Refresh once.
     _refresh_users()
     return USERS.get(api_key)
 
@@ -122,7 +177,7 @@ def _validate_jwt(token: str) -> dict | None:
     except Exception as e:
         log.debug(f"JWT validation failed: {e}")
         return None
-# ââ Setup âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Setup Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 app            = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ping-dev-secret-change-in-prod")
 _lock          = Lock()
@@ -137,7 +192,7 @@ log = logging.getLogger("ping-server")
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 
-# ââ CORS âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ CORS Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.after_request
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"]  = "*"
@@ -152,11 +207,12 @@ def add_cors(response):
 @app.route("/deals/<search_id>", methods=["OPTIONS"])
 @app.route("/crm/login",  methods=["OPTIONS"])
 @app.route("/api/parse-lease", methods=["OPTIONS"])
+@app.route("/api/parse-document", methods=["OPTIONS"])
 def preflight():
     return make_response("", 204)
 
 
-# ââ Extension: Search Templates Sync ââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Extension: Search Templates Sync Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.route("/api/search-templates", methods=["GET", "POST", "OPTIONS"])
 def ext_search_templates():
     if request.method == "OPTIONS":
@@ -172,7 +228,7 @@ def ext_search_templates():
     return jsonify({"ok": True})
 
 
-# ââ Extension: Assumption Presets Sync ââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Extension: Assumption Presets Sync Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.route("/api/assumption-presets", methods=["GET", "POST", "OPTIONS"])
 def ext_assumption_presets():
     if request.method == "OPTIONS":
@@ -195,14 +251,14 @@ def crm_templates_preflight():
     return make_response("", 204)
 
 
-# ââ Helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Helpers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 def _gen_search_id() -> str:
     date_str = datetime.now().strftime("%Y%m%d")
     rand = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"SRCH-{date_str}-{rand}"
 
 
-# ââ Routes âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Routes Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.route("/trigger", methods=["POST"])
 def trigger():
     payload = request.get_json(force=True, silent=True) or {}
@@ -214,13 +270,13 @@ def trigger():
 
     user = _get_user(api_key)
     if not user:
-        log.warning(f"Unauthorized trigger attempt with key: {api_key[:8]}â¦")
+        log.warning(f"Unauthorized trigger attempt with key: {api_key[:8]}Ã¢ÂÂ¦")
         return jsonify({
             "ok": False,
             "error": "Invalid API key. Contact your admin to request access.",
         }), 403
 
-    # Resolve email from key â user cannot spoof this
+    # Resolve email from key Ã¢ÂÂ user cannot spoof this
     email = user["email"]
     payload["email"] = email
 
@@ -264,7 +320,7 @@ def health():
     return jsonify({"ok": True, "status": status}), 200
 
 
-# ââ Settings API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Settings API Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.route("/settings", methods=["GET"])
 def get_settings():
     """Return the user's current underwriting assumptions."""
@@ -287,7 +343,7 @@ def patch_settings():
     return jsonify({"ok": True, "assumptions": merged}), 200
 
 
-# ââ Lease Parser API ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢Ã¢ Lease Parser API Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢Ã¢
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".csv", ".xlsx"}
 
@@ -383,7 +439,7 @@ def parse_lease_endpoint():
         return jsonify({"error": "Failed to parse lease document. See server logs for details."}), 500
 
 
-# ââ CRM app (React build takes priority, falls back to legacy crm.html) âââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ CRM app (React build takes priority, falls back to legacy crm.html) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 STATIC_DIST = Path(__file__).parent / "static" / "dist"
 
 @app.route("/app")
@@ -413,7 +469,7 @@ def vite_assets(filename):
     return send_file(str(assets_dir / filename))
 
 
-# ââ Deals API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Deals API Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 from supabase_client import (
     fetch_deals, get_download_url, update_deal_stage, fetch_deal_by_id,
     fetch_deal_versions, fetch_deal_version_by_id, fetch_deal_uuid_by_search_id,
@@ -437,7 +493,7 @@ def deals():
 
 @app.route("/deals/<search_id>", methods=["GET"])
 def deal_detail(search_id):
-    """Return a single deal by search_id â avoids loading all deals in DealDetailPage."""
+    """Return a single deal by search_id Ã¢ÂÂ avoids loading all deals in DealDetailPage."""
     api_key = request.headers.get("X-Api-Key") or request.args.get("api_key", "")
     if not api_key or not _get_user(api_key):
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
@@ -492,18 +548,18 @@ def patch_deal_stage(search_id):
 
     try:
         update_deal_stage(search_id, stage)
-        log.info(f"Deal {search_id} stage â {stage}")
+        log.info(f"Deal {search_id} stage Ã¢ÂÂ {stage}")
         return jsonify({"ok": True, "stage": stage}), 200
     except Exception as e:
         log.error(f"Error updating deal stage: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ── Rerun Engine (Move 1) ────────────────────────────────────────────────────
+# ââ Rerun Engine (Move 1) ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 # Three routes for the deal-versioned rerun loop:
-#   GET    /deals/<search_id>/versions                  → list all versions
-#   POST   /deals/<search_id>/rerun                     → create new version by rerun
-#   GET    /deals/<search_id>/versions/<vid>/download   → signed URL to .xlsx
+#   GET    /deals/<search_id>/versions                  â list all versions
+#   POST   /deals/<search_id>/rerun                     â create new version by rerun
+#   GET    /deals/<search_id>/versions/<vid>/download   â signed URL to .xlsx
 
 @app.route("/deals/<search_id>/versions", methods=["GET", "OPTIONS"])
 def list_deal_versions(search_id):
@@ -622,7 +678,7 @@ def download_version_workbook(search_id, version_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ââ CRM Login ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ CRM Login Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.route("/crm/login", methods=["POST"])
 def crm_login():
     """
@@ -642,7 +698,7 @@ def crm_login():
     return jsonify({"ok": True, "name": user["name"], "email": user["email"]}), 200
 
 
-# ââ Admin ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Admin Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 def _admin_auth(f):
     """Decorator: require active admin session, else return 401."""
     @functools.wraps(f)
@@ -708,7 +764,7 @@ def admin_add_user():
         log.error(f"Failed to insert user into Supabase: {e}", exc_info=True)
         return jsonify({"ok": False, "error": "Failed to save user"}), 500
     USERS[key] = {"email": email, "name": name}
-    log.info(f"Admin: added user {name} <{email}> â {key}")
+    log.info(f"Admin: added user {name} <{email}> Ã¢ÂÂ {key}")
     return jsonify({"ok": True, "key": key, "user": USERS[key]}), 201
 
 
@@ -731,7 +787,7 @@ def admin_remove_user(key):
 
 
 
-# ââ Extension download landing page ââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Extension download landing page Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 # Absorbs Render cold-start auto-refreshes so they don't each trigger a file
 # download.  Users go to /download instead of hitting /api/extension-zip directly.
 @app.route("/download", methods=["GET"])
@@ -821,7 +877,7 @@ def download_page():
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
-# ââ Extension ZIP download âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Extension ZIP download Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 EXTENSION_DIR = Path(__file__).resolve().parent.parent / "Extension" / "ping-analyst_v1"
 
 @app.route("/api/extension-zip", methods=["GET", "OPTIONS"])
@@ -846,7 +902,7 @@ def extension_zip():
     )
 
 
-# ââ Extension auth ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Extension auth Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 @app.route("/extension/login", methods=["POST", "OPTIONS"])
 def extension_login():
     """Validate email + extension_password for Chrome extension sign-in."""
@@ -893,14 +949,14 @@ def extension_password():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ââ Entry point ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Entry point Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     log.info(f"Ping Pipeline Server starting on http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-# ââ Templates API âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Ã¢ÂÂÃ¢ÂÂ Templates API Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 from supabase_client import fetch_templates, fetch_template_by_id, insert_template, update_template, delete_template
 
 @app.route("/crm/templates", methods=["GET"])
@@ -1013,15 +1069,15 @@ def crm_analyze():
     return jsonify({"ok": True, "searchId": search_id, "status": "started"}), 200
 
 
-# ── RentCast proxy (CRM Market Intelligence) ─────────────────────────────────
+# ââ RentCast proxy (CRM Market Intelligence) âââââââââââââââââââââââââââââââââ
 # Proxies browser requests to RentCast API server-side to avoid CORS.
-# Key is stored in RENTCAST_API_KEY env var — never exposed to the frontend.
+# Key is stored in RENTCAST_API_KEY env var â never exposed to the frontend.
 
 RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "")
 
 @app.route("/api/rentcast/markets", methods=["GET", "OPTIONS"])
 def rentcast_markets_proxy():
-    """Proxy GET /api/rentcast/markets → RentCast /v1/markets"""
+    """Proxy GET /api/rentcast/markets â RentCast /v1/markets"""
     if request.method == "OPTIONS":
         return "", 204
     zip_code = request.args.get("zipCode", "")
@@ -1046,7 +1102,7 @@ def rentcast_markets_proxy():
 
 @app.route("/api/rentcast/listings", methods=["GET", "OPTIONS"])
 def rentcast_listings_proxy():
-    """Proxy GET /api/rentcast/listings → RentCast /v1/listings/rental/long-term"""
+    """Proxy GET /api/rentcast/listings â RentCast /v1/listings/rental/long-term"""
     if request.method == "OPTIONS":
         return "", 204
     zip_code = request.args.get("zipCode", "")
