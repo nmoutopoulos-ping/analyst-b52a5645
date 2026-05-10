@@ -182,7 +182,7 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
             print(f"    → {combo['type']} {combo['beds']}bd/{combo['baths']}ba: {len(rows)} comps")
             all_comp_rows.extend(rows)
 
-    all_comp_rows.sort(key=lambda r: (float(r["filter_beds"]), float(r["filter_baths"])))
+    all_comp_rows.sort(key=lambda r: (float(r.get("filter_beds") or 0), float(r.get("filter_baths") or 0)))
 
     comp_summary = aggregate_rent_assumptions(all_comp_rows)
 
