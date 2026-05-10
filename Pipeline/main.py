@@ -157,6 +157,9 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
     """Steps 2-6 for a single search. Used by both entry points."""
     assump = assump or {}
 
+    # Filter out combos with missing beds/baths (phantom entries)
+    combos = [c for c in combos if c.get("beds") is not None and c.get("baths") is not None]
+
     # 2. Fetch RentCast comps (parallel across combos)
     print(f"  [2] Fetching RentCast comps for {len(combos)} combo(s) in parallel...")
 
@@ -211,7 +214,7 @@ def _run_search(search_id: str, search_meta: dict, combos: list,
                 "beds": bs, "baths": ba, "count": 0,
                 "avg_rent": 0, "avg_sqft": 0, "units": u,
             })
-    comp_summary.sort(key=lambda s: (float(s["beds"]), float(s["baths"])))
+    comp_summary.sort(key=lambda s: (float(s.get("beds") or 0), float(s.get("baths") or 0)))
 
     # 3. Populate Excel model
     print(f"  [3] Populating Excel model...")
